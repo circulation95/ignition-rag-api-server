@@ -3,16 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f4; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1 { color: #007bff; }
+        .status { margin-top: 20px; font-weight: bold; color: green; }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h1>{{ title }}</h1>
+        <h1>FastAPI Dashboard 🏭</h1>
         <p>{{ message }}</p>
-
-        <button onclick="alert('FastAPI 서버 연결 성공!')">
-            테스트 버튼
-        </button>
+        <div class="status">
+            현재 서버 상태: <span style="color: blue;">Online</span>
+        </div>
+        <hr>
+        <p>Ignition에서 <b>POST /predict</b> 로 데이터를 보내면 로그에 찍힙니다.</p>
     </div>
 </body>
 </html>
