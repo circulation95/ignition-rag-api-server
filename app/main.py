@@ -33,7 +33,7 @@ load_dotenv()
 
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 DB_PATH = "./faiss_index"
-LLM_MODEL_NAME = "llama3.1"
+LLM_MODEL_NAME = "qwen3:8b"
 
 OPC_ENDPOINT = os.getenv("OPC_ENDPOINT", "opc.tcp://localhost:62541")
 opc_client = IgnitionOpcClient(OPC_ENDPOINT)
@@ -134,7 +134,7 @@ async def lifespan(app: FastAPI):
     try:
         embeddings = HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL_NAME,
-            model_kwargs={"device": "cpu"},
+            model_kwargs={"device": "cuda"},
             encode_kwargs={"normalize_embeddings": True},
         )
         if os.path.exists(DB_PATH):
