@@ -7,10 +7,10 @@ from app.graph.nodes import (
     generate_rag,
     intent_router,
     retrieve_rag,
-    sql_generate,
+    sql_react_agent,
 )
 from app.graph.state import GraphState
-from app.tools import chat_tools_list, sql_tools_list
+from app.tools import chat_tools_list
 
 
 def _route_decision(state: GraphState):
@@ -25,17 +25,19 @@ def build_graph():
     workflow.add_node("retrieve_rag", retrieve_rag)
     workflow.add_node("generate_rag", generate_rag)
     workflow.add_node("generate_chat", generate_chat)
-    workflow.add_node("sql_generate", sql_generate)
+
+    # SQL ReAct Agent를 서브그래프로 추가
+    # create_react_agent는 자체적으로 도구 호출 루프를 관리
+    workflow.add_node("sql_react_agent", sql_react_agent)
 
     workflow.add_node("chat_tools_node", ToolNode(chat_tools_list))
-    workflow.add_node("sql_tools_node", ToolNode(sql_tools_list))
 
     workflow.add_edge(START, "intent_router")
     workflow.add_conditional_edges(
         "intent_router",
         _route_decision,
         {
-            "sql_search": "sql_generate",
+            "sql_search": "sql_react_agent",
             "rag_search": "retrieve_rag",
             "chat": "generate_chat",
         },
@@ -51,11 +53,7 @@ def build_graph():
     )
     workflow.add_edge("chat_tools_node", "generate_chat")
 
-    workflow.add_conditional_edges(
-        "sql_generate",
-        tools_condition,
-        {"tools": "sql_tools_node", END: END},
-    )
-    workflow.add_edge("sql_tools_node", "sql_generate")
+    # ReAct Agent는 자체 루프가 있으므로 직접 END로 연결
+    workflow.add_edge("sql_react_agent", END)
 
     return workflow.compile(checkpointer=memory)

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     vectorstore_path: str = "./faiss_index"
     vectorstore_k: int = 5
 
-    llm_model_name: str = "qwen3:8b"
+    llm_model_name: str = "gemma2:9b"
 
     opc_endpoint: str = "opc.tcp://localhost:62541"
 
