@@ -226,7 +226,3 @@ rag-api-server/
 - **Embedding:** HuggingFace (multilingual-e5-large)
 - **Database:** MariaDB (SQLAlchemy)
 - **OPC UA:** asyncua
-
-## 라이선스
-
-MIT License
