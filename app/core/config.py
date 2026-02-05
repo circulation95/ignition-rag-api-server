@@ -15,8 +15,11 @@ class Settings(BaseSettings):
     embedding_model_name: str = "intfloat/multilingual-e5-large"
     embedding_device: str = "cuda"
     embedding_normalize: bool = True
-    vectorstore_path: str = "./faiss_index"
+
+    # Chroma 벡터스토어 설정
+    vectorstore_path: str = "./chroma_db"
     vectorstore_k: int = 5
+    chroma_collection_name: str = "ignition_docs"
 
     llm_model_name: str = "gemma2:9b"
 
