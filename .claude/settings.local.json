@@ -3,7 +3,9 @@
     "allow": [
       "Bash(.venvScriptsactivate)",
       "Bash(source:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(test:*)"
     ]
   }
 }

@@ -92,17 +92,78 @@ def find_partition_table(year: int, month: int) -> str:
         return f"테이블 검색 오류: {e}"
 
 
+def _fuzzy_search_tags(tag_name: str, max_suggestions: int = 5) -> list[str]:
+    """
+    태그명 퍼지 검색 - 여러 전략으로 유사한 태그 찾기.
+
+    전략:
+    1. 부분 단어 분리 검색 (예: "Tank1Temp" → "Tank1" OR "Temp")
+    2. 대소문자 무시 검색
+    3. 와일드카드 패턴 확장 (예: "Fan" → "%Fan%", "%FAN%", "%fan%")
+
+    Args:
+        tag_name: 검색할 태그명
+        max_suggestions: 최대 제안 수
+
+    Returns:
+        유사한 태그 경로 리스트
+    """
+    try:
+        # 전략 1: 단어 분리 (공백, 언더스코어 기준)
+        parts = re.split(r"[\s_]+", tag_name)
+        parts = [p for p in parts if len(p) >= 2]  # 2글자 이상만
+
+        if parts:
+            # OR 조건으로 검색
+            conditions = " OR ".join([f"tagpath LIKE '%{part}%'" for part in parts])
+            query = f"""
+            SELECT DISTINCT tagpath
+            FROM sqlth_te
+            WHERE {conditions}
+            LIMIT {max_suggestions}
+            """
+        else:
+            # 전략 2: 대소문자 변형 검색
+            variants = [tag_name.upper(), tag_name.lower(), tag_name.capitalize()]
+            conditions = " OR ".join([f"tagpath LIKE '%{variant}%'" for variant in variants])
+            query = f"""
+            SELECT DISTINCT tagpath
+            FROM sqlth_te
+            WHERE {conditions}
+            LIMIT {max_suggestions}
+            """
+
+        result = get_sql_db().run(query)
+
+        # Parse result string to extract tag paths
+        if result and result != "[]":
+            # Result format: "[('path1',), ('path2',)]"
+            import ast
+
+            try:
+                parsed = ast.literal_eval(result)
+                return [item[0] if isinstance(item, tuple) else item for item in parsed]
+            except:
+                return []
+
+        return []
+    except Exception as e:
+        print(f"[FuzzySearch] Error: {e}")
+        return []
+
+
 @tool
 def get_tag_id(tag_name: str) -> str:
     """
-    sqlth_te 테이블에서 태그명으로 ID 조회.
+    sqlth_te 테이블에서 태그명으로 ID 조회. 정확한 일치가 없으면 유사 태그 제안.
 
     Args:
         tag_name: 태그명 (예: "FAN1", "Tank1_Temperature") - 부분 일치 검색
 
     Returns:
-        태그 ID와 전체 tagpath 정보
+        태그 ID와 전체 tagpath 정보, 또는 유사 태그 제안
     """
+    # 전략 1: 정확한 부분 일치 검색
     query = f"""
     SELECT id, tagpath
     FROM sqlth_te
@@ -111,9 +172,22 @@ def get_tag_id(tag_name: str) -> str:
     """
     try:
         result = get_sql_db().run(query)
-        if not result or result == "[]":
-            return f"'{tag_name}'와 일치하는 태그를 찾을 수 없습니다."
-        return result
+        if result and result != "[]":
+            return result
+
+        # 전략 2: 정확한 일치가 없으면 퍼지 검색 시도
+        print(f"[get_tag_id] Exact match failed for '{tag_name}', trying fuzzy search...")
+        similar_tags = _fuzzy_search_tags(tag_name)
+
+        if similar_tags:
+            suggestions = "\n".join([f"  - {tag}" for tag in similar_tags])
+            return (
+                f"'{tag_name}'와 정확히 일치하는 태그를 찾을 수 없습니다.\n\n"
+                f"다음 태그를 의미하셨나요?\n{suggestions}\n\n"
+                f"정확한 태그 이름으로 다시 검색해주세요."
+            )
+
+        return f"'{tag_name}'와 일치하는 태그를 찾을 수 없습니다. 태그 이름을 확인해주세요."
     except Exception as e:
         return f"태그 조회 오류: {e}"
 

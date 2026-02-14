@@ -55,7 +55,25 @@ async def ask(request: QueryRequest, fastapi_request: Request):
         else "응답을 생성하지 못했습니다."
     )
 
-    return {
+    # Build base response
+    response = {
         "intent": result.get("intent_category"),
         "answer": final_answer,
     }
+
+    # Phase 1: Include pending action if write operation is queued
+    pending_actions = result.get("pending_actions")
+    if pending_actions and len(pending_actions) > 0:
+        # Get the most recent pending action
+        latest_pending = pending_actions[-1]
+
+        response["pending_action"] = {
+            "id": latest_pending.id,
+            "tag": latest_pending.tag_path,
+            "value": latest_pending.value,
+            "risk_level": latest_pending.risk_level,
+            "approval_url": "/api/v1/approve",
+            "requested_at": latest_pending.requested_at.isoformat(),
+        }
+
+    return response
