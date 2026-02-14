@@ -1,11 +1,16 @@
-from langgraph.prebuilt import create_react_agent
+from langgraph.types import interrupt
+from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, SystemMessage
-from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import ChatOllama
 
 from app.core.config import settings
-from app.graph.state import GraphState
+from app.graph.state import (
+    GraphState,
+    HumanFeedback,
+    IntentRouterOutput,
+    SupervisorRouterOutput,
+)
 from app.graph.prompts import (
     SUPERVISOR_PROMPT,
     OPERATIONS_AGENT_PROMPT,
@@ -24,53 +29,59 @@ def intent_router(state: GraphState):
     print("[Router] Intent classification...")
     question = state["messages"][-1].content
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0, format="json")
+    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm_with_structure = llm.with_structured_output(IntentRouterOutput)
+
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 """You are a smart router. Classify the user question into one of three categories:
 
-1. 'sql_search': Questions about historical/past data, trends, logs, averages, statistics, database queries, OR ALARM HISTORY.
-   - Keywords: 평균, 최대, 최소, 합계, 트렌드, 로그, 기록, 히스토리, 과거, 어제, 지난주, 특정 날짜
-   - Alarm Keywords: 알람, 경보, 발생, 언제, alarm, 알람 이력, 알람 기록, 최근 알람
+1. 'sql_search': Questions about historical/past data, trends, logs, averages, statistics, database queries, OR ALARM HISTORY/EVENTS.
+   - Data Keywords: 평균, 최대, 최소, 합계, 트렌드, 로그, 기록, 히스토리, 과거, 어제, 지난주, 특정 날짜
+   - Alarm Keywords: 알람, 경보, 발생, 언제, 최근, alarm, event, 이벤트, 알람 이력, 알람 기록, 가장 최근
    - Examples:
      - "2026년 1월 18일 FAN1 평균 RPM은?" → sql_search
      - "어제 Tank1 최고 온도는?" → sql_search
+     - "가장 최근에 발생한 알람" → sql_search (알람 발생 이력 조회)
      - "FAN1 알람이 최근에 언제 발생했어?" → sql_search
      - "지난주 Smoke 알람 몇 번 발생했어?" → sql_search
      - "알람 통계 보여줘" → sql_search
+     - "최근 알람 목록" → sql_search
 
 2. 'rag_search': Questions asking for definitions, manuals, troubleshooting guides, specifications, or general knowledge.
-   - Keywords: 무엇, 정의, 매뉴얼, 가이드, 스펙, 사양, 에러코드, 알람코드 의미, 설명
+   - Keywords: 무엇, 정의, 매뉴얼, 가이드, 스펙, 사양, 에러코드, 알람코드 의미, 설명, 어떻게
    - Examples:
      - "PID 제어란 무엇인가요?" → rag_search
      - "알람 코드 E001 의미는?" → rag_search (알람 코드의 '의미'를 묻는 것)
+     - "FAN 트러블슈팅 방법" → rag_search
 
 3. 'chat': Requests for CURRENT/real-time values, control commands, greetings, or general chat.
    - Keywords: 현재, 지금, 실시간, 켜줘, 꺼줘, 설정해줘, 안녕
    - Examples:
      - "현재 Tank1 온도 알려줘" → chat
      - "FAN1 켜줘" → chat
+     - "지금 온도는?" → chat
 
-IMPORTANT:
-- If a specific date/time is mentioned (like "2026년 1월 18일", "어제", "지난주"), it is ALWAYS 'sql_search'.
-- If asking about alarm occurrence, history, or statistics → 'sql_search'
-- If asking about alarm code meaning/definition → 'rag_search'
-
-Return ONLY a JSON object: {"destination": "sql_search" | "rag_search" | "chat"}
+CRITICAL RULES:
+- ANY question about alarm occurrence, history, or past events → 'sql_search'
+- If asking "가장 최근", "최근에", "언제 발생" with alarm → 'sql_search'
+- If a specific date/time is mentioned → ALWAYS 'sql_search'
+- ONLY if asking about alarm code MEANING/DEFINITION → 'rag_search'
 """,
             ),
             ("human", "{question}"),
         ]
     )
 
-    chain = prompt | llm | JsonOutputParser()
+    chain = prompt | llm_with_structure
 
     try:
-        result = chain.invoke({"question": question})
-        destination = result.get("destination", "chat")
-    except Exception:
+        result: IntentRouterOutput = chain.invoke({"question": question})
+        destination = result.destination
+    except Exception as e:
+        print(f"[Router] Error: {e}, defaulting to chat")
         destination = "chat"
 
     print(f"[Router] Decision: {destination}")
@@ -158,20 +169,30 @@ Q: "지난주 Smoke 알람 통계 알려줘"
 Answer in Korean. 숫자와 시간 정보를 명확하게 전달하세요."""
 
 
-def build_sql_react_agent():
-    """SQL 전용 ReAct Agent 생성 (태그 히스토리 + 알람 도구)"""
+def sql_react_agent(state: GraphState):
+    """
+    Handle historical data and alarm queries via SQL database.
+
+    Uses ReAct pattern with tag history and alarm tools.
+    """
+    print("[SQL ReAct Agent] Processing database query...")
+
     llm = ChatOllama(model=settings.llm_model_name, temperature=0)
     # 태그 히스토리 도구 + 알람 도구 결합
     combined_tools = tag_history_tools_list + alarm_tools_list
-    return create_react_agent(
+
+    # Create ReAct agent with specialized SQL prompt
+    sql_agent = create_agent(
         model=llm,
         tools=combined_tools,
-        prompt=SQL_AGENT_PROMPT,
+        system_prompt=SQL_AGENT_PROMPT,
     )
 
+    # Execute agent
+    result = sql_agent.invoke(state)
 
-# ReAct Agent 인스턴스 (서브그래프로 사용)
-sql_react_agent = build_sql_react_agent()
+    # Return the result (agent handles state updates internally)
+    return result
 
 
 # ============================================================================
@@ -339,7 +360,8 @@ def supervisor_router(state: GraphState):
     """
     print("[Supervisor] Analyzing query complexity...")
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0, format="json")
+    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm_with_structure = llm.with_structured_output(SupervisorRouterOutput)
 
     supervisor_chain = (
         ChatPromptTemplate.from_messages(
@@ -348,14 +370,13 @@ def supervisor_router(state: GraphState):
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
-        | llm
-        | JsonOutputParser()
+        | llm_with_structure
     )
 
     try:
-        result = supervisor_chain.invoke({"messages": state["messages"]})
-        required_agents = result.get("required_agents", [])
-        reasoning = result.get("reasoning", "")
+        result: SupervisorRouterOutput = supervisor_chain.invoke({"messages": state["messages"]})
+        required_agents = result.required_agents
+        reasoning = result.reasoning
 
         print(f"[Supervisor] Required agents: {required_agents}")
         print(f"[Supervisor] Reasoning: {reasoning}")
@@ -415,10 +436,10 @@ def historian_agent(state: GraphState):
     llm = ChatOllama(model=settings.llm_model_name, temperature=0)
 
     # Create ReAct agent with specialized historian prompt
-    historian_react_agent = create_react_agent(
+    historian_react_agent = create_agent(
         model=llm,
         tools=tag_history_tools_list,
-        state_modifier=SystemMessage(content=HISTORIAN_AGENT_PROMPT),
+        system_prompt=HISTORIAN_AGENT_PROMPT,
     )
 
     # Execute agent
@@ -453,10 +474,10 @@ def alarm_agent(state: GraphState):
     llm = ChatOllama(model=settings.llm_model_name, temperature=0)
 
     # Create ReAct agent with specialized alarm prompt
-    alarm_react_agent = create_react_agent(
+    alarm_react_agent = create_agent(
         model=llm,
         tools=alarm_tools_list,
-        state_modifier=SystemMessage(content=ALARM_AGENT_PROMPT),
+        system_prompt=ALARM_AGENT_PROMPT,
     )
 
     # Execute agent
@@ -491,7 +512,16 @@ def knowledge_agent(state: GraphState):
     # Retrieve documents
     retriever = get_retriever()
     if not retriever:
-        return {}
+        # Even if retriever is unavailable, increment counter to prevent infinite loop
+        completed = state.get("agents_completed", 0) + 1
+        no_docs_msg = AIMessage(
+            content="지식베이스가 현재 사용 불가능합니다. 문서 검색을 건너뜁니다.",
+            name="Knowledge Agent"
+        )
+        return {
+            "messages": [no_docs_msg],
+            "agents_completed": completed,
+        }
 
     query = state["payload"]
     docs = retriever.invoke(query)
@@ -626,3 +656,206 @@ def validate_agent_response(state: GraphState):
             print("[Validator] Max retries reached, accepting failure")
 
     return {"needs_retry": False}
+
+
+# ============================================================================
+# MODERN HITL WITH LANGGRAPH INTERRUPTS (LangGraph 1.x)
+# ============================================================================
+
+
+def execute_tool_with_approval(state: GraphState):
+    """
+    Execute tools with modern interrupt-based approval for write operations.
+
+    This replaces the legacy approval workflow with LangGraph 1.x interrupt() pattern.
+    When a write operation is detected, the graph pauses and waits for human approval.
+    """
+    from langchain_core.messages import ToolMessage
+    from datetime import datetime
+    import uuid
+
+    # Get the last AI message with tool calls
+    last_message = state["messages"][-1]
+
+    if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+        return {}
+
+    tool_messages = []
+
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        tool_id = tool_call["id"]
+
+        print(f"[ToolNode] Executing {tool_name} with args: {tool_args}")
+
+        # Find the tool
+        tool_func = None
+        for tool in chat_tools_list:
+            if tool.name == tool_name:
+                tool_func = tool
+                break
+
+        if not tool_func:
+            tool_messages.append(
+                ToolMessage(
+                    content=f"Error: Tool {tool_name} not found",
+                    tool_call_id=tool_id,
+                )
+            )
+            continue
+
+        # Check if this is a write operation requiring approval
+        is_write_operation = tool_name == "write_ignition_tag"
+
+        if is_write_operation:
+            # Create pending action
+            from app.graph.state import PendingAction
+
+            action = PendingAction(
+                id=str(uuid.uuid4()),
+                action_type="write_tag",
+                tag_path=tool_args.get("tag_path", "unknown"),
+                value=tool_args.get("value"),
+                reason=f"User requested write operation via {tool_name}",
+                requested_at=datetime.now(),
+                status="pending",
+                risk_level=_assess_risk_level(tool_args.get("tag_path", "")),
+            )
+
+            print(f"[HITL] Write operation detected: {action.tag_path} -> {action.value}")
+            print(f"[HITL] Risk level: {action.risk_level}")
+            print(f"[HITL] Interrupting graph for approval...")
+
+            # Use LangGraph interrupt() to pause execution and wait for approval
+            # The interrupt value will be stored in the checkpointer
+            approval_request = {
+                "action_id": action.id,
+                "tag_path": action.tag_path,
+                "value": action.value,
+                "risk_level": action.risk_level,
+                "requested_at": action.requested_at.isoformat(),
+                "message": f"⚠️ Write operation requires approval:\n"
+                          f"Tag: {action.tag_path}\n"
+                          f"Value: {action.value}\n"
+                          f"Risk: {action.risk_level}\n\n"
+                          f"Use /api/v1/approve to approve or reject.",
+            }
+
+            # This will pause the graph and save state
+            # Resume will happen via Command with human_feedback
+            human_response = interrupt(approval_request)
+
+            # When resumed, human_response will contain the approval decision
+            if human_response:
+                print(f"[HITL] Received approval response: {human_response}")
+
+                if human_response.get("approved"):
+                    # Execute the write operation
+                    try:
+                        import asyncio
+                        if asyncio.iscoroutinefunction(tool_func.func):
+                            result = asyncio.run(tool_func.func(**tool_args))
+                        else:
+                            result = tool_func.func(**tool_args)
+
+                        tool_content = f"✅ Approved by {human_response.get('operator', 'unknown')}\n{str(result)}"
+                        print(f"[HITL] Write operation executed successfully")
+
+                    except Exception as e:
+                        tool_content = f"❌ Error executing approved operation: {str(e)}"
+                        print(f"[HITL] Error: {e}")
+                else:
+                    tool_content = f"🚫 Rejected by {human_response.get('operator', 'unknown')}\n" \
+                                 f"Reason: {human_response.get('notes', 'No reason provided')}"
+                    print(f"[HITL] Write operation rejected")
+
+                tool_messages.append(
+                    ToolMessage(content=tool_content, tool_call_id=tool_id)
+                )
+            else:
+                # No response yet, should not happen but handle gracefully
+                print("[HITL] Warning: Interrupt returned None")
+                tool_messages.append(
+                    ToolMessage(
+                        content="⏸️ Awaiting approval...",
+                        tool_call_id=tool_id,
+                    )
+                )
+        else:
+            # Non-write operation, execute immediately
+            try:
+                import asyncio
+                if asyncio.iscoroutinefunction(tool_func.func):
+                    result = asyncio.run(tool_func.func(**tool_args))
+                else:
+                    result = tool_func.func(**tool_args)
+
+                tool_messages.append(
+                    ToolMessage(content=str(result), tool_call_id=tool_id)
+                )
+            except Exception as e:
+                print(f"[ToolNode] Error: {e}")
+                tool_messages.append(
+                    ToolMessage(
+                        content=f"Error: {str(e)}",
+                        tool_call_id=tool_id,
+                    )
+                )
+
+    return {"messages": tool_messages}
+
+
+def _assess_risk_level(tag_path: str) -> str:
+    """Assess risk level based on tag path patterns."""
+    tag_lower = tag_path.lower()
+
+    # High risk: safety-critical systems
+    if any(keyword in tag_lower for keyword in ["safety", "emergency", "alarm", "trip"]):
+        return "high"
+
+    # Medium risk: actuators and control
+    if any(keyword in tag_lower for keyword in ["valve", "pump", "motor", "fan", "setpoint"]):
+        return "medium"
+
+    # Low risk: indicators and displays
+    return "low"
+
+
+def process_human_approval(state: GraphState):
+    """
+    Process human approval feedback after graph resume.
+
+    This node is called after the graph is resumed with Command.
+    It extracts the approval decision from human_feedback and updates state.
+    """
+    feedback = state.get("human_feedback")
+
+    if not feedback:
+        print("[HITL] No human feedback found in state")
+        return {}
+
+    print(f"[HITL] Processing approval from {feedback.operator}")
+    print(f"[HITL] Decision: {'APPROVED' if feedback.approved else 'REJECTED'}")
+
+    # Create response message
+    if feedback.approved:
+        response = AIMessage(
+            content=f"✅ **Operation Approved**\n\n"
+                   f"Approved by: {feedback.operator}\n"
+                   f"Time: {feedback.timestamp.isoformat()}\n"
+                   f"Notes: {feedback.notes or 'None'}\n\n"
+                   f"Executing operation..."
+        )
+    else:
+        response = AIMessage(
+            content=f"🚫 **Operation Rejected**\n\n"
+                   f"Rejected by: {feedback.operator}\n"
+                   f"Time: {feedback.timestamp.isoformat()}\n"
+                   f"Reason: {feedback.notes or 'No reason provided'}"
+        )
+
+    return {
+        "messages": [response],
+        "human_feedback": None,  # Clear feedback after processing
+    }

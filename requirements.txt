@@ -1,5 +1,34 @@
+# FastAPI
 fastapi
-uvicorn
+uvicorn[standard]
 python-dotenv
 pydantic-settings
-langchain-chroma
+
+# LangChain Core (v1.x - Latest stable)
+langchain>=1.2.0
+langchain-core>=1.2.0
+langchain-community>=0.3.0
+
+# LangGraph (compatible with langchain 1.2.x)
+langgraph>=1.0.8,<1.1.0
+langgraph-checkpoint>=1.0.12
+langgraph-checkpoint-sqlite>=1.0.3
+
+# LLM Integration
+langchain-ollama>=1.0.0
+
+# Vector Store
+langchain-chroma>=0.1.0
+
+# Database
+pymysql
+sqlalchemy
+
+# OPC UA
+asyncua
+
+# Utilities
+aiosqlite  # For SQLite async checkpointer
+
+# LangSmith Tracing
+langsmith

@@ -5,7 +5,11 @@
       "Bash(source:*)",
       "Bash(pip install:*)",
       "Bash(python -m py_compile:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "WebFetch(domain:docs.langchain.com)",
+      "Bash(pip index:*)",
+      "Bash(mysql:*)",
+      "Bash(mariadb:*)"
     ]
   }
 }

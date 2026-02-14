@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     vectorstore_k: int = 5
     chroma_collection_name: str = "ignition_docs"
 
-    llm_model_name: str = "gemma2:9b"
+    llm_model_name: str = "llama3.1:latest"  # Changed from gemma2:9b (doesn't support tools)
 
     opc_endpoint: str = "opc.tcp://localhost:62541"
 
@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     sql_user: str = "ignition"
     sql_password: str = "password"
     sql_db: str = "ignition"
+
+    # LangSmith 추적 설정
+    langsmith_tracing: bool = False
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str = ""
+    langsmith_project: str = "default"
 
 
 settings = Settings()

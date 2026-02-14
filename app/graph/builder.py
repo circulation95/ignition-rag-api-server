@@ -1,23 +1,27 @@
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, START, StateGraph, Send
+from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import tools_condition
 
 from app.graph.nodes import (
     aggregate_results,
     alarm_agent,
+    # Legacy approval nodes (backward compatibility)
     chat_tools_node_with_approval,
     check_pending_actions,
+    request_approval,
+    # Modern interrupt-based HITL (LangGraph 1.x)
+    execute_tool_with_approval,
+    process_human_approval,
+    # Other nodes
     generate_chat,
     generate_rag,
     historian_agent,
     intent_router,
     knowledge_agent,
     operations_agent,
-    request_approval,
     retrieve_rag,
     sql_react_agent,
     supervisor_router,
-    validate_agent_response,  # Phase 3: Validation node
+    validate_agent_response,
 )
 from app.graph.state import GraphState
 
@@ -74,19 +78,22 @@ def _check_aggregation_ready(state: GraphState):
         return END
 
 
-def _route_to_agents_parallel(state: GraphState):
+def _route_to_agents_sequential(state: GraphState):
     """
-    Route supervisor to all required agents in parallel using Send API.
+    Route supervisor to required agents sequentially.
 
-    Phase 3 Enhancement: Parallel execution for improved performance.
-    All required agents execute simultaneously and results are aggregated.
+    NOTE: Temporary sequential execution due to langgraph<1.1.0 compatibility.
+    When langchain supports langgraph>=1.2.0, upgrade to Send API for parallel execution.
     """
     required = state.get("required_agents", [])
+    completed_count = state.get("agents_completed", 0)
 
-    if not required:
-        # No agents required, go directly to aggregation
-        print("[Router] No agents required, skipping to aggregation")
-        return []
+    if not required or completed_count >= len(required):
+        # All agents processed, go to aggregation
+        print(
+            f"[Router] All {completed_count} agents completed, proceeding to aggregation"
+        )
+        return "aggregate_results"
 
     # Map agent names to node names
     agent_node_map = {
@@ -96,21 +103,35 @@ def _route_to_agents_parallel(state: GraphState):
         "knowledge": "knowledge_agent",
     }
 
-    # Create Send objects for parallel execution
-    sends = []
-    for agent_name in required:
-        node_name = agent_node_map.get(agent_name)
-        if node_name:
-            print(f"[Router] Dispatching to {agent_name} (parallel)")
-            sends.append(Send(node_name, state))
-        else:
-            print(f"[Router] Warning: Unknown agent '{agent_name}', skipping")
+    # Route to next required agent based on completion count
+    next_agent = required[completed_count]
+    node_name = agent_node_map.get(next_agent, "aggregate_results")
+    print(
+        f"[Router] Dispatching to {next_agent} ({completed_count + 1}/{len(required)}, sequential)"
+    )
 
-    return sends if sends else []
+    return node_name
 
 
-def build_graph():
-    memory = MemorySaver()
+def next_agent_router(state: GraphState):
+    """Passthrough node for routing to next agent without re-running supervisor."""
+    # This node doesn't modify state, just serves as a routing point
+    return state
+
+
+def build_graph(checkpointer=None, use_modern_hitl: bool = True):
+    """
+    Build the LangGraph workflow with optional modern HITL support.
+
+    Args:
+        checkpointer: Checkpointer instance (AsyncSqliteSaver or MemorySaver)
+                     If None, graph will not persist state
+        use_modern_hitl: If True, use LangGraph 1.x interrupt-based HITL (recommended)
+                        If False, use legacy approval workflow (backward compatibility)
+
+    Returns:
+        Compiled StateGraph with checkpointer
+    """
     workflow = StateGraph(GraphState)
 
     # ============================================================================
@@ -125,11 +146,18 @@ def build_graph():
     workflow.add_node("sql_react_agent", sql_react_agent)
 
     # Phase 1: Safety layer nodes
-    workflow.add_node("chat_tools_node", chat_tools_node_with_approval)
-    workflow.add_node("request_approval", request_approval)
+    if use_modern_hitl:
+        # Modern interrupt-based HITL (LangGraph 1.x)
+        workflow.add_node("chat_tools_node", execute_tool_with_approval)
+        workflow.add_node("process_approval", process_human_approval)
+    else:
+        # Legacy approval workflow (backward compatibility)
+        workflow.add_node("chat_tools_node", chat_tools_node_with_approval)
+        workflow.add_node("request_approval", request_approval)
 
     # Phase 2: Supervisor + specialized agents
     workflow.add_node("supervisor_router", supervisor_router)
+    workflow.add_node("next_agent_router", next_agent_router)  # Passthrough for routing
     workflow.add_node("operations_agent", operations_agent)
     workflow.add_node("historian_agent", historian_agent)
     workflow.add_node("alarm_agent", alarm_agent)
@@ -158,27 +186,37 @@ def build_graph():
     )
 
     # ============================================================================
-    # Supervisor → Specialized Agents (PARALLEL EXECUTION - Phase 3)
+    # Supervisor → Specialized Agents (SEQUENTIAL EXECUTION)
     # ============================================================================
-    # Using Send API to dispatch to multiple agents in parallel
-    # After all agents complete, results are automatically aggregated
+    # NOTE: Using sequential execution due to langgraph<1.1.0 compatibility
+    # When langchain supports langgraph>=1.2.0, upgrade to Send API for parallel execution
 
+    # Supervisor routes to next_agent_router, which then routes to actual agents
+    workflow.add_edge("supervisor_router", "next_agent_router")
+
+    # next_agent_router decides which agent to run next or if we're done
     workflow.add_conditional_edges(
-        "supervisor_router",
-        _route_to_agents_parallel,
-        # No path mapping needed - Send API handles routing
+        "next_agent_router",
+        _route_to_agents_sequential,
+        {
+            "operations_agent": "operations_agent",
+            "historian_agent": "historian_agent",
+            "alarm_agent": "alarm_agent",
+            "knowledge_agent": "knowledge_agent",
+            "aggregate_results": "aggregate_results",
+        },
     )
 
     # ============================================================================
-    # Agent Execution → Aggregation (PARALLEL COLLECTION - Phase 3)
+    # Agent Execution → Next Agent Router (SEQUENTIAL - Phase 3)
     # ============================================================================
-    # All agents flow to aggregation after completing
-    # Aggregation uses barrier synchronization to wait for all agents
+    # After each agent completes, route back to next_agent_router (not supervisor!)
+    # This prevents re-running supervisor analysis
 
-    workflow.add_edge("operations_agent", "aggregate_results")
-    workflow.add_edge("historian_agent", "aggregate_results")
-    workflow.add_edge("alarm_agent", "aggregate_results")
-    workflow.add_edge("knowledge_agent", "aggregate_results")
+    workflow.add_edge("operations_agent", "next_agent_router")
+    workflow.add_edge("historian_agent", "next_agent_router")
+    workflow.add_edge("alarm_agent", "next_agent_router")
+    workflow.add_edge("knowledge_agent", "next_agent_router")
 
     # Aggregation conditional end (waits for all agents via barrier)
     workflow.add_conditional_edges(
@@ -207,16 +245,28 @@ def build_graph():
         {"tools": "chat_tools_node", END: END},
     )
 
-    workflow.add_conditional_edges(
-        "chat_tools_node",
-        check_pending_actions,
-        {
-            "approval": "request_approval",
-            "continue": "generate_chat",
-            "end": END,
-        },
-    )
+    if use_modern_hitl:
+        # Modern HITL: interrupt() automatically pauses the graph
+        # When resumed with Command, execution continues naturally
+        workflow.add_conditional_edges(
+            "chat_tools_node",
+            tools_condition,
+            {
+                "tools": "generate_chat",  # Continue tool loop
+                END: END,
+            },
+        )
+    else:
+        # Legacy HITL: manual approval routing
+        workflow.add_conditional_edges(
+            "chat_tools_node",
+            check_pending_actions,
+            {
+                "approval": "request_approval",
+                "continue": "generate_chat",
+                "end": END,
+            },
+        )
+        workflow.add_edge("request_approval", END)
 
-    workflow.add_edge("request_approval", END)
-
-    return workflow.compile(checkpointer=memory)
+    return workflow.compile(checkpointer=checkpointer)

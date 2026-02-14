@@ -2,11 +2,11 @@
 
 **Ignition SCADA 운영, 분석, 트러블슈팅을 위한 지능형 멀티 에이전트 시스템**
 
-이 시스템은 RAG(검색 증강 생성), 실시간 운영 제어, 히스토리 데이터 분석을 활용하여 Ignition SCADA 시스템에 대한 지능형 쿼리 처리를 제공하는 Supervisor 기반 멀티 에이전트 아키텍처의 고급 AI 기반 API 서버입니다.
+이 시스템은 RAG(검색 증강 생성), 실시간 운영 제어, 히스토리 데이터 분석을 활용하여 Ignition SCADA 시스템에 대한 지능형 쿼리 처리를 제공하는 Supervisor 기반 멀티 에이전트 아키텍처의 API 서버입니다.
 
 ## 🌟 주요 기능
 
-### 🔐 Phase 1: 안전 우선 운영
+### 🔐 Phase 1: 안전 우선 운영 (Legacy)
 - **사람-기계 협업(Human-in-the-Loop) 승인**: 모든 쓰기 작업은 실행 전 명시적 승인 필요
 - **위험도 평가**: 작업의 자동 분류 (high/medium/low 위험도)
 - **감사 추적(Audit Trail)**: 운영자 신원과 함께 모든 승인 결정 완전 기록
@@ -22,12 +22,6 @@
   - **Knowledge Agent**: RAG 기반 문서 검색
 - **Fast Path 최적화**: 단순 쿼리는 Supervisor 오버헤드 우회
 - **결과 종합**: 다중 에이전트 발견 사항의 일관된 집계
-
-### 🚀 Phase 3: 고급 기능
-- **자가 수정(Self-Correction)**: 지능형 제안을 통한 퍼지 태그명 매칭
-- **병렬 에이전트 실행**: 여러 에이전트의 동시 실행으로 50% 이상 속도 향상
-- **재시도 로직**: 다중 전략을 통한 실패 자동 복구
-- **배리어 동기화**: 병렬 워크플로우의 효율적 조정
 
 ## 📊 아키텍처 개요
 
@@ -60,12 +54,13 @@ Intent Router (복잡도 감지)
 ## 🛠️ 기술 스택
 
 - **프레임워크**: FastAPI (고성능을 위한 async/await)
-- **AI/LLM**: Ollama와 함께하는 LangChain + LangGraph (로컬 qwen3:8b 모델)
+- **AI/LLM**: Ollama와 함께하는 LangChain + LangGraph 1.x (로컬 qwen3:8b 모델)
 - **오케스트레이션**: 병렬 실행을 위한 Send API를 갖춘 LangGraph StateGraph
+- **HITL Pattern**: LangGraph interrupt()/Command API (LangGraph 1.x)
+- **State Persistence**: SqliteSaver checkpointer (서버 재시작 시에도 상태 유지)
 - **벡터 스토어**: Chroma (RAG 문서 검색)
 - **데이터베이스**: 파티션된 히스토리안 테이블을 갖춘 MariaDB
 - **SCADA 통합**: Ignition 태그 작업을 위한 OPC UA 프로토콜
-- **메모리**: MemorySaver를 통한 대화 상태 관리
 
 ## 📦 설치
 
@@ -162,17 +157,21 @@ AI 에이전트 시스템에 쿼리 제출
 }
 ```
 
-**승인 대기 중인 응답:**
+**승인 대기 중인 응답 (Modern HITL):**
 ```json
 {
   "intent": "chat",
+  "status": "pending_approval",
   "answer": "⚠️ 쓰기 작업은 승인이 필요합니다...",
+  "thread_id": "user_session_123",
   "pending_action": {
-    "id": "abc-123-def-456",
-    "tag": "[default]FAN/FAN1",
+    "action_id": "abc-123-def-456",
+    "tag_path": "[default]FAN/FAN1",
     "value": 0,
     "risk_level": "high",
+    "message": "Write operation requires approval...",
     "approval_url": "/api/v1/approve",
+    "state_url": "/api/v1/state/user_session_123",
     "requested_at": "2026-02-14T14:30:00"
   }
 }
@@ -182,17 +181,20 @@ AI 에이전트 시스템에 쿼리 제출
 
 **POST** `/api/v1/approve`
 
-대기 중인 쓰기 작업 승인 또는 거부
+대기 중인 쓰기 작업 승인 또는 거부 (Modern HITL - LangGraph Command API)
 
 **요청:**
 ```json
 {
+  "thread_id": "user_session_123",
   "action_id": "abc-123-def-456",
   "approved": true,
   "operator": "홍길동",
   "notes": "유지보수를 위해 승인됨"
 }
 ```
+
+> **Note**: Modern HITL 패턴에서는 `thread_id`가 필수입니다. 이를 통해 중단된 그래프 상태를 찾아 재개합니다.
 
 **응답:**
 ```json
@@ -227,6 +229,21 @@ AI 에이전트 시스템에 쿼리 제출
       "reason": "사용자가 쓰기 작업을 요청함"
     }
   ]
+}
+```
+
+**GET** `/api/v1/state/{thread_id}`
+
+특정 스레드의 현재 상태 조회 (디버깅용)
+
+**응답:**
+```json
+{
+  "thread_id": "user_session_123",
+  "next": ["chat_tools_node"],
+  "tasks": [{"id": "task_001", "name": "execute_tool_with_approval"}],
+  "checkpoint_id": "1a2b3c4d",
+  "values_keys": ["messages", "intent_category", "current_action"]
 }
 ```
 
@@ -559,31 +576,56 @@ python scripts/init_vectorstore.py
 - builder.py의 Send API import 확인
 - agents_completed 카운터가 증가하는지 확인
 
-## 📝 라이선스
+## 🔄 마이그레이션 가이드
 
-[라이선스 정보]
+### Legacy → Modern HITL 마이그레이션
 
-## 👥 기여자
+시스템은 **Phase 1 (Legacy)** 와 **Phase 1.5 (Modern HITL)** 두 가지 패턴을 모두 지원합니다.
 
-[팀/기여자 정보]
+#### Modern HITL 활성화
 
-## 🚀 로드맵
+```python
+# app/main.py
+app.state.app_graph = build_graph(
+    use_modern_hitl=True,   # Modern interrupt pattern
+    use_memory=False        # SQLite persistence (production)
+)
+```
 
-- [ ] 실시간 스트리밍 응답
-- [ ] 웹 UI 대시보드
-- [ ] 다국어 지원 (영어, 한국어)
-- [ ] 고급 분석 및 리포팅
-- [ ] 외부 알림 시스템 통합
-- [ ] JWT 인증을 통한 보안 강화
-- [ ] 성능 메트릭 및 모니터링
-- [ ] Docker 컨테이너화
+#### 주요 차이점
 
-## 📞 지원
+| 항목 | Legacy (Phase 1) | Modern (Phase 1.5) |
+|------|------------------|-------------------|
+| **상태 저장** | 메모리 (재시작 시 손실) | SQLite (영구 저장) |
+| **승인 패턴** | 별도 approval_storage | LangGraph interrupt() |
+| **재개 방식** | REST API 직접 실행 | Command API로 그래프 재개 |
+| **thread_id** | 선택사항 | 필수 |
+| **Time Travel** | 불가능 | 가능 (checkpoint 기반) |
 
-문제, 질문 또는 기여에 대해서는 GitHub에서 이슈를 열거나 [your-email@example.com]으로 연락하세요.
+#### 상세 가이드
 
----
+**전체 마이그레이션 가이드**: [MIGRATION_HITL.md](MIGRATION_HITL.md) 참조
 
-**산업 자동화를 위해 ❤️ 로 제작되었습니다**
+### 주요 이점
 
-*LangChain, LangGraph, FastAPI, Ollama로 구동됩니다*
+✅ **서버 재시작 시에도 승인 상태 유지**
+✅ **간소화된 코드** - 별도의 pending action 관리 불필요
+✅ **디버깅 개선** - 과거 체크포인트로 time travel 가능
+✅ **프로덕션 준비** - LangChain에서 검증된 패턴
+
+### 롤백
+
+문제 발생 시 언제든 Legacy 패턴으로 롤백 가능:
+
+```python
+app.state.app_graph = build_graph(use_modern_hitl=False)
+```
+
+## 📚 참고 문서
+
+### LangGraph 1.x HITL Resources
+- [LangGraph Interrupts Documentation](https://docs.langchain.com/oss/python/langgraph/interrupts)
+- [How to wait for user input using interrupt](https://langchain-ai.github.io/langgraph/how-tos/human_in_the_loop/wait-user-input/)
+- [Human-in-the-Loop Agent Using Interrupt and Command](https://medium.com/fundamentals-of-artificial-intelligence/human-in-the-loop-agent-using-interrupt-and-command-in-langgraph-f3895051aeb8)
+- [Architecting HITL Agents: Interrupts, Persistence, State Management](https://medium.com/data-science-collective/architecting-human-in-the-loop-agents-interrupts-persistence-and-state-management-in-langgraph-fa36c9663d6f)
+- [LangGraph Persistence Guide](https://fast.io/resources/langgraph-persistence/)

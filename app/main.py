@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,17 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.graph.builder import build_graph
 from app.services.vectorstore import init_retriever
+from app.services.checkpointer import get_checkpointer_context
+from langgraph.checkpoint.memory import MemorySaver
+
+
+# LangSmith 추적 활성화
+if settings.langsmith_tracing:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.langsmith_endpoint
+    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith_api_key
+    os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project
+    print(f"[LangSmith] 추적 활성화됨 - Project: {settings.langsmith_project}")
 
 
 @asynccontextmanager
@@ -22,8 +34,21 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[Warning] 벡터 DB 로드 실패: {exc}")
 
-    app.state.app_graph = build_graph()
-    yield
+    # Get checkpointer context (use_memory=False for production persistence)
+    checkpointer_ctx = get_checkpointer_context(use_memory=False)
+
+    # If using AsyncSqliteSaver, enter its context manager
+    if not isinstance(checkpointer_ctx, MemorySaver):
+        async with checkpointer_ctx as checkpointer:
+            app.state.checkpointer = checkpointer
+            app.state.app_graph = build_graph(checkpointer=checkpointer)
+            yield
+    else:
+        # MemorySaver doesn't need context manager
+        app.state.checkpointer = checkpointer_ctx
+        app.state.app_graph = build_graph(checkpointer=checkpointer_ctx)
+        yield
+
     print("[System] 서버 종료")
 
 
