@@ -1,0 +1,119 @@
+<html xmlns:wicket="http://wicket.apache.org">
+<body>
+    <wicket:panel>
+        <style>
+            .rag-section { margin: 16px 0 24px 0; border: 1px solid #b8c1cc; }
+            .rag-section-title { background: #7f8c8d; color: #fff; padding: 8px 10px; font-weight: 600; font-size: 13px; }
+            .rag-table { width: 100%; border-collapse: collapse; }
+            .rag-table th { width: 220px; text-align: left; background: #e9eef3; padding: 8px 10px; border-top: 1px solid #b8c1cc; border-right: 1px solid #b8c1cc; font-size: 12px; vertical-align: middle; }
+            .rag-table td { padding: 8px 10px; border-top: 1px solid #b8c1cc; font-size: 12px; }
+            .rag-input { width: 240px; height: 24px; padding: 2px 6px; }
+            .rag-input-wide { width: 320px; }
+            .rag-file { width: 320px; }
+            .rag-note { color: #666; font-size: 11px; margin-top: 4px; }
+            .rag-actions { margin-top: 12px; }
+            .rag-actions--center { text-align: center; margin: 16px 0 24px; }
+            .rag-inline-actions { margin-top: 6px; }
+            .rag-button { padding: 6px 14px; border: 1px solid #97a5b3; background: #f4f6f8; color: #2e3b4e; border-radius: 3px; cursor: pointer; }
+            .rag-button.primary { background: #2c76c7; border-color: #2c76c7; color: #fff; }
+            .rag-button.secondary { background: #f4f6f8; }
+            .rag-status { margin-top: 8px; font-size: 12px; }
+            .rag-doclist { max-height: 180px; overflow: auto; background: #fafbfc; border: 1px solid #d0d6dd; padding: 8px; }
+        </style>
+
+        <form wicket:id="settingsForm">
+            <div class="rag-section">
+                <div class="rag-section-title">Endpoint Configuration</div>
+                <table class="rag-table">
+                    <tr>
+                        <th>Server URL</th>
+                        <td>
+                            <input class="rag-input rag-input-wide" type="text" wicket:id="serverUrl"/>
+                            <div class="rag-note">(default: http://localhost)</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Server Port</th>
+                        <td>
+                            <input class="rag-input" type="number" wicket:id="serverPort"/>
+                            <div class="rag-note">(default: 8000)</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Chat Path</th>
+                        <td>
+                            <input class="rag-input" type="text" wicket:id="chatPath"/>
+                            <div class="rag-note">(default: /chat)</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Doc Upload Path</th>
+                        <td>
+                            <input class="rag-input" type="text" wicket:id="docUploadPath"/>
+                            <div class="rag-note">(default: /documents/upload)</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Doc List Path</th>
+                        <td>
+                            <input class="rag-input" type="text" wicket:id="docListPath"/>
+                            <div class="rag-note">(default: /documents/list)</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Doc Delete Path</th>
+                        <td>
+                            <input class="rag-input" type="text" wicket:id="docDeletePath"/>
+                            <div class="rag-note">(default: /documents/delete)</div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="rag-actions rag-actions--center">
+                <button class="rag-button primary" wicket:id="saveButton" type="submit">Save Changes</button>
+            </div>
+        </form>
+
+        <form wicket:id="docsForm" enctype="multipart/form-data">
+            <div class="rag-section">
+                <div class="rag-section-title">Document Management</div>
+                <table class="rag-table">
+                    <tr>
+                        <th>Upload File</th>
+                        <td>
+                            <input class="rag-file" type="file" wicket:id="uploadFile"/>
+                            <div class="rag-inline-actions">
+                                <button class="rag-button secondary" wicket:id="uploadButton" type="submit">Upload</button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Delete Filename</th>
+                        <td>
+                            <input class="rag-input" type="text" wicket:id="deleteName"/>
+                            <div class="rag-inline-actions">
+                                <button class="rag-button secondary" wicket:id="deleteButton" type="submit">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Document List</th>
+                        <td>
+                            <div class="rag-inline-actions">
+                                <button class="rag-button secondary" wicket:id="refreshButton" type="submit">Refresh List</button>
+                            </div>
+                            <div class="rag-doclist">
+                                <pre wicket:id="docList"></pre>
+                            </div>
+                            <div class="rag-status">
+                                <span wicket:id="statusMessage"></span>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </form>
+    </wicket:panel>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "default": "Ignition RAG Assistant"
+    },
+    "maxResults": {
+      "type": "integer",
+      "default": 3,
+      "minimum": 1,
+      "maximum": 10
+    },
+    "endpointUrl": {
+      "type": "string",
+      "default": ""
+    },
+    "headerBackground": {
+      "type": "string",
+      "default": "#ffffff"
+    },
+    "headerTextColor": {
+      "type": "string",
+      "default": "#202124"
+    },
+    "containerBackground": {
+      "type": "string",
+      "default": "#ffffff"
+    },
+    "messageBackgroundUser": {
+      "type": "string",
+      "default": "#0b57d0"
+    },
+    "messageTextColorUser": {
+      "type": "string",
+      "default": "#ffffff"
+    },
+    "messageBackgroundAssistant": {
+      "type": "string",
+      "default": "#f1f3f4"
+    },
+    "messageTextColorAssistant": {
+      "type": "string",
+      "default": "#1f1f1f"
+    },
+    "inputBackground": {
+      "type": "string",
+      "default": "#f1f3f4"
+    },
+    "inputTextColor": {
+      "type": "string",
+      "default": "#202124"
+    }
+  }
+}

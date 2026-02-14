@@ -1,0 +1,107 @@
+.rag-chat-component {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.rag-chat-header {
+  padding: 8px 12px;
+  font-weight: 600;
+  background: #f4f6f8;
+  border-bottom: 1px solid #e4e7ec;
+}
+
+.rag-chat-messages {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  gap: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rag-chat-message {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f9fafb;
+  border: 1px solid #eaecf0;
+}
+
+.rag-chat-user {
+  background: #e6f4ff;
+  border-color: #b6d9ff;
+}
+
+.rag-chat-assistant {
+  background: #f4fdf4;
+  border-color: #c7f0c2;
+}
+
+.rag-chat-system {
+  background: #fff7e6;
+  border-color: #ffe3a3;
+  font-size: 12px;
+}
+
+.rag-chat-text {
+  white-space: pre-wrap;
+}
+
+.rag-chat-sources {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #e4e7ec;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rag-chat-source {
+  font-size: 12px;
+}
+
+.rag-chat-source-title {
+  font-weight: 600;
+}
+
+.rag-chat-source-score {
+  color: #667085;
+}
+
+.rag-chat-source-snippet {
+  color: #475467;
+}
+
+.rag-chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid #e4e7ec;
+}
+
+.rag-chat-config-error {
+  padding: 8px 10px;
+  color: #b42318;
+  background: #fff1f0;
+  border-bottom: 1px solid #fecdca;
+  font-size: 12px;
+}
+
+.rag-chat-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #d0d5dd;
+  border-radius: 4px;
+}
+
+.rag-chat-send {
+  padding: 6px 12px;
+  background: #1d7cf2;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+}
