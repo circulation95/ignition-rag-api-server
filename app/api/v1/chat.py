@@ -3,6 +3,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
+import uuid
 
 
 router = APIRouter()
@@ -11,7 +12,7 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     question: Optional[str] = None
     query: Optional[str] = None
-    thread_id: str = "default_user"
+    thread_id: Optional[str] = None  # Optional: if not provided, creates new session
 
     @field_validator("question", mode="before")
     @classmethod
@@ -26,8 +27,8 @@ class QueryRequest(BaseModel):
         return self.question or self.query or ""
 
 
-@router.post("/ask")
-async def ask(request: QueryRequest, fastapi_request: Request):
+@router.post("/chat")
+async def chat(request: QueryRequest, fastapi_request: Request):
     question_text = request.get_question_text()
 
     if not question_text:
@@ -37,12 +38,14 @@ async def ask(request: QueryRequest, fastapi_request: Request):
             status_code=422, detail="Either 'question' or 'query' field is required"
         )
 
-    print(f"\nQ : {question_text}")
+    # If no thread_id provided, create a new session
+    thread_id = request.thread_id or str(uuid.uuid4())
+    print(f"\n[Session: {thread_id}] Q: {question_text}")
 
     app_graph = fastapi_request.app.state.app_graph
     inputs = {"messages": [HumanMessage(content=question_text)]}
     config = RunnableConfig(
-        configurable={"thread_id": request.thread_id},
+        configurable={"thread_id": thread_id},
         recursion_limit=30,
     )
 
@@ -55,8 +58,9 @@ async def ask(request: QueryRequest, fastapi_request: Request):
         else "응답을 생성하지 못했습니다."
     )
 
-    # Build base response
+    # Build base response with thread_id
     response = {
+        "thread_id": thread_id,  # Return thread_id for session management
         "intent": result.get("intent_category"),
         "answer": final_answer,
     }

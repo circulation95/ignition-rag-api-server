@@ -65,7 +65,7 @@ class SupervisorRouterOutput(BaseModel):
 
 
 class GraphState(TypedDict):
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: List[BaseMessage]  # Removed add_messages reducer for stateless mode
     intent_category: str
     payload: str
     documents: List[Document]

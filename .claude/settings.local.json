@@ -9,7 +9,10 @@
       "WebFetch(domain:docs.langchain.com)",
       "Bash(pip index:*)",
       "Bash(mysql:*)",
-      "Bash(mariadb:*)"
+      "Bash(mariadb:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(tasklist:*)",
+      "Bash(pkill:*)"
     ]
   }
 }

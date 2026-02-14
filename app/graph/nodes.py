@@ -1,7 +1,7 @@
 from langgraph.types import interrupt
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import ChatOllama
 
 from app.core.config import settings
@@ -108,10 +108,12 @@ def generate_rag(state: GraphState):
 def generate_chat(state: GraphState):
     llm = ChatOllama(model=settings.llm_model_name, temperature=0.1)
     llm_with_tools = llm.bind_tools(chat_tools_list)
+
     system_msg = SystemMessage(
         content="You are an Ignition SCADA Operator. Answer in Korean."
     )
-    response = llm_with_tools.invoke([system_msg] + state["messages"])
+    # Only use the latest user message
+    response = llm_with_tools.invoke([system_msg, state["messages"][-1]])
     return {"messages": [response]}
 
 
@@ -137,18 +139,18 @@ You can query both Tag History data and Alarm History data.
 
 ## Alarm History Tools (알람 히스토리)
 
-5. `get_latest_alarm_for_tag(tag_name)`: 특정 태그의 최근 알람 조회
-   - "FAN1 알람 언제 발생?" → get_latest_alarm_for_tag("FAN1")
+5. `get_latest_alarm_for_tag(tag_path)`: 특정 태그의 최근 알람 조회
+   - "FAN1 알람 언제 발생?" → get_latest_alarm_for_tag(tag_path="FAN1")
 
-6. `search_alarm_events(tag_name, hours_ago, event_type, limit)`: 알람 이벤트 검색
-   - tag_name: 태그명 (선택)
+6. `search_alarm_events(tag_path, hours_ago, event_type, limit)`: 알람 이벤트 검색
+   - tag_path: 태그 경로 (선택)
    - hours_ago: 최근 N시간 (기본 24)
    - event_type: "active", "clear", "ack" (선택)
 
-7. `get_alarm_statistics(tag_name, days)`: 알람 통계 조회
+7. `get_alarm_statistics(tag_path, days)`: 알람 통계 조회
    - 발생 횟수, 태그별 분포
 
-8. `get_alarm_count_by_period(tag_name, start_date, end_date)`: 기간별 알람 횟수
+8. `get_alarm_count_by_period(tag_path, start_date, end_date)`: 기간별 알람 횟수
    - start_date, end_date: "YYYY-MM-DD" 형식
 
 ## Workflow Examples
@@ -161,10 +163,10 @@ Q: "2025년 9월 1일 FAN1 평균 RPM은?"
 
 ### 알람 조회
 Q: "FAN1 알람이 최근에 언제 발생했어?"
-1. get_latest_alarm_for_tag("FAN1") → eventtime, source 정보
+1. get_latest_alarm_for_tag(tag_path="FAN1") → eventtime, source 정보
 
 Q: "지난주 Smoke 알람 통계 알려줘"
-1. get_alarm_statistics("Smoke", 7) → 발생 횟수, 분포
+1. get_alarm_statistics(tag_path="Smoke", days=7) → 발생 횟수, 분포
 
 Answer in Korean. 숫자와 시간 정보를 명확하게 전달하세요."""
 
@@ -360,6 +362,9 @@ def supervisor_router(state: GraphState):
     """
     print("[Supervisor] Analyzing query complexity...")
 
+    # Extract only the latest user question (not entire history)
+    latest_question = state["messages"][-1].content
+
     llm = ChatOllama(model=settings.llm_model_name, temperature=0)
     llm_with_structure = llm.with_structured_output(SupervisorRouterOutput)
 
@@ -367,14 +372,14 @@ def supervisor_router(state: GraphState):
         ChatPromptTemplate.from_messages(
             [
                 ("system", SUPERVISOR_PROMPT),
-                MessagesPlaceholder(variable_name="messages"),
+                ("human", "{question}"),
             ]
         )
         | llm_with_structure
     )
 
     try:
-        result: SupervisorRouterOutput = supervisor_chain.invoke({"messages": state["messages"]})
+        result: SupervisorRouterOutput = supervisor_chain.invoke({"question": latest_question})
         required_agents = result.required_agents
         reasoning = result.reasoning
 
@@ -401,17 +406,20 @@ def operations_agent(state: GraphState):
     """
     print("[Operations Agent] Processing real-time operations...")
 
+    # Extract only the latest user question
+    latest_question = state["messages"][-1].content
+
     llm = ChatOllama(model=settings.llm_model_name, temperature=0)
     llm_with_tools = llm.bind_tools(chat_tools_list)
 
     agent_chain = ChatPromptTemplate.from_messages(
         [
             ("system", OPERATIONS_AGENT_PROMPT),
-            MessagesPlaceholder(variable_name="messages"),
+            ("human", "{question}"),
         ]
     ) | llm_with_tools
 
-    response = agent_chain.invoke({"messages": state["messages"]})
+    response = agent_chain.invoke({"question": latest_question})
 
     # Mark message with agent name for aggregation
     response.name = "Operations Agent"

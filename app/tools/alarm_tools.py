@@ -31,12 +31,12 @@ def format_timestamp(ts_ms: int) -> str:
 
 
 @tool
-def get_latest_alarm_for_tag(tag_name: str) -> str:
+def get_latest_alarm_for_tag(tag_path: str) -> str:
     """
     특정 태그의 가장 최근 알람 조회.
 
     Args:
-        tag_name: 태그명 (예: "FAN1", "Smoke_Detect", "Motor") - 부분 일치 검색
+        tag_path: 태그 경로 (예: "FAN1", "Smoke_Detect", "Motor") - 부분 일치 검색
 
     Returns:
         가장 최근 알람 정보 (발생 시간, 태그, 상태)
@@ -49,7 +49,7 @@ def get_latest_alarm_for_tag(tag_name: str) -> str:
         priority,
         eventtype
     FROM alarm_events
-    WHERE source LIKE '%{tag_name}%'
+    WHERE source LIKE '%{tag_path}%'
     ORDER BY eventtime DESC
     LIMIT 1
     """
@@ -57,7 +57,7 @@ def get_latest_alarm_for_tag(tag_name: str) -> str:
     try:
         result = get_sql_db().run(query)
         if not result or result == "[]" or result == "":
-            return f"'{tag_name}' 관련 알람 기록이 없습니다."
+            return f"'{tag_path}' 관련 알람 기록이 없습니다."
 
         # 결과 파싱 및 포맷팅
         # eventtype: 0=Active, 1=Clear, 2=Acknowledged
@@ -74,7 +74,7 @@ def get_latest_alarm_for_tag(tag_name: str) -> str:
 
 @tool
 def search_alarm_events(
-    tag_name: Optional[str] = None,
+    tag_path: Optional[str] = None,
     hours_ago: int = 24,
     event_type: Optional[str] = None,
     limit: int = 50,
@@ -83,7 +83,7 @@ def search_alarm_events(
     알람 이벤트 검색.
 
     Args:
-        tag_name: 태그명 검색어 (예: "FAN1", "Tank") - 부분 일치, None이면 전체
+        tag_path: 태그 경로 검색어 (예: "FAN1", "Tank") - 부분 일치, None이면 전체
         hours_ago: 최근 N시간 내 조회 (기본 24시간)
         event_type: "active", "clear", "ack" 또는 None (전체)
         limit: 최대 반환 행 수 (기본 50)
@@ -98,8 +98,8 @@ def search_alarm_events(
     # WHERE 조건 구성
     conditions = [f"eventtime >= {start_ms}"]
 
-    if tag_name:
-        conditions.append(f"source LIKE '%{tag_name}%'")
+    if tag_path:
+        conditions.append(f"source LIKE '%{tag_path}%'")
 
     if event_type:
         event_type_map = {"active": 0, "clear": 1, "ack": 2, "acknowledged": 2}
@@ -124,7 +124,7 @@ def search_alarm_events(
     try:
         result = get_sql_db().run(query)
         if not result or result == "[]" or result == "":
-            filter_desc = f"태그: {tag_name}, " if tag_name else ""
+            filter_desc = f"태그: {tag_path}, " if tag_path else ""
             return f"조건에 맞는 알람이 없습니다. ({filter_desc}최근 {hours_ago}시간)"
         return f"알람 이벤트 조회 결과 (최근 {hours_ago}시간):\n{result}"
     except Exception as e:
@@ -132,12 +132,12 @@ def search_alarm_events(
 
 
 @tool
-def get_alarm_statistics(tag_name: Optional[str] = None, days: int = 7) -> str:
+def get_alarm_statistics(tag_path: Optional[str] = None, days: int = 7) -> str:
     """
     알람 통계 조회 (발생 횟수, 태그별 분포).
 
     Args:
-        tag_name: 태그명 필터 (선택, 부분 일치)
+        tag_path: 태그 경로 필터 (선택, 부분 일치)
         days: 최근 N일 (기본 7일)
 
     Returns:
@@ -146,7 +146,7 @@ def get_alarm_statistics(tag_name: Optional[str] = None, days: int = 7) -> str:
     now_ms = int(datetime.now().timestamp() * 1000)
     start_ms = now_ms - (days * 24 * 3600 * 1000)
 
-    tag_filter = f"AND source LIKE '%{tag_name}%'" if tag_name else ""
+    tag_filter = f"AND source LIKE '%{tag_path}%'" if tag_path else ""
 
     query = f"""
     SELECT
@@ -174,7 +174,7 @@ def get_alarm_statistics(tag_name: Optional[str] = None, days: int = 7) -> str:
 
 @tool
 def get_alarm_count_by_period(
-    tag_name: Optional[str] = None,
+    tag_path: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> str:
@@ -182,7 +182,7 @@ def get_alarm_count_by_period(
     특정 기간의 알람 발생 횟수 조회.
 
     Args:
-        tag_name: 태그명 필터 (선택)
+        tag_path: 태그 경로 필터 (선택)
         start_date: 시작 날짜 "YYYY-MM-DD" (선택, 기본 7일 전)
         end_date: 종료 날짜 "YYYY-MM-DD" (선택, 기본 오늘)
 
@@ -213,7 +213,7 @@ def get_alarm_count_by_period(
     start_ms = int(start_dt.timestamp() * 1000)
     end_ms = int(end_dt.timestamp() * 1000)
 
-    tag_filter = f"AND source LIKE '%{tag_name}%'" if tag_name else ""
+    tag_filter = f"AND source LIKE '%{tag_path}%'" if tag_path else ""
 
     query = f"""
     SELECT
@@ -228,8 +228,8 @@ def get_alarm_count_by_period(
     try:
         result = get_sql_db().run(query)
         period_str = f"{start_dt.strftime('%Y-%m-%d')} ~ {end_dt.strftime('%Y-%m-%d')}"
-        if tag_name:
-            return f"'{tag_name}' 알람 통계 ({period_str}):\n{result}"
+        if tag_path:
+            return f"'{tag_path}' 알람 통계 ({period_str}):\n{result}"
         return f"전체 알람 통계 ({period_str}):\n{result}"
     except Exception as e:
         return f"알람 횟수 조회 오류: {e}"

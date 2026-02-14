@@ -9,8 +9,6 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.graph.builder import build_graph
 from app.services.vectorstore import init_retriever
-from app.services.checkpointer import get_checkpointer_context
-from langgraph.checkpoint.memory import MemorySaver
 
 
 # LangSmith 추적 활성화
@@ -34,39 +32,34 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[Warning] 벡터 DB 로드 실패: {exc}")
 
-    # Get checkpointer context (use_memory=False for production persistence)
-    checkpointer_ctx = get_checkpointer_context(use_memory=False)
-
-    # If using AsyncSqliteSaver, enter its context manager
-    if not isinstance(checkpointer_ctx, MemorySaver):
-        async with checkpointer_ctx as checkpointer:
-            app.state.checkpointer = checkpointer
-            app.state.app_graph = build_graph(checkpointer=checkpointer)
-            yield
-    else:
-        # MemorySaver doesn't need context manager
-        app.state.checkpointer = checkpointer_ctx
-        app.state.app_graph = build_graph(checkpointer=checkpointer_ctx)
-        yield
+    # No checkpointer - state is not persisted (stateless mode)
+    print("[Checkpointer] Stateless mode - no state persistence")
+    app.state.checkpointer = None
+    app.state.app_graph = build_graph(checkpointer=None)
+    yield
 
     print("[System] 서버 종료")
 
 
-ALLOWED_ORIGINS = ["http://localhost:8089", "http://127.0.0.1:8089"]
-
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+# CORS configuration - explicit origins for development
+origins = [
+    "http://localhost:8089",
+    "http://127.0.0.1:8089",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-
-@app.options("/{full_path:path}")
-async def preflight_handler():
-    return Response(status_code=204)
 app.include_router(api_router)
 
 
