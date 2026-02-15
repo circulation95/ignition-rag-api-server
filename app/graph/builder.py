@@ -4,6 +4,7 @@ from langgraph.prebuilt import tools_condition
 from app.graph.nodes import (
     aggregate_results,
     alarm_agent,
+    alarm_tools_node,
     # Legacy approval nodes (backward compatibility)
     chat_tools_node_with_approval,
     check_pending_actions,
@@ -15,6 +16,7 @@ from app.graph.nodes import (
     generate_chat,
     generate_rag,
     historian_agent,
+    historian_tools_node,
     intent_router,
     knowledge_agent,
     operations_agent,
@@ -160,7 +162,9 @@ def build_graph(checkpointer=None, use_modern_hitl: bool = True):
     workflow.add_node("next_agent_router", next_agent_router)  # Passthrough for routing
     workflow.add_node("operations_agent", operations_agent)
     workflow.add_node("historian_agent", historian_agent)
+    workflow.add_node("historian_tools_node", historian_tools_node)
     workflow.add_node("alarm_agent", alarm_agent)
+    workflow.add_node("alarm_tools_node", alarm_tools_node)
     workflow.add_node("knowledge_agent", knowledge_agent)
     workflow.add_node("aggregate_results", aggregate_results)
 
@@ -213,9 +217,34 @@ def build_graph(checkpointer=None, use_modern_hitl: bool = True):
     # After each agent completes, route back to next_agent_router (not supervisor!)
     # This prevents re-running supervisor analysis
 
+    # Operations agent: simple execution (no ReAct loop needed for real-time reads)
     workflow.add_edge("operations_agent", "next_agent_router")
-    workflow.add_edge("historian_agent", "next_agent_router")
-    workflow.add_edge("alarm_agent", "next_agent_router")
+
+    # Historian agent: ReAct loop with tools
+    workflow.add_conditional_edges(
+        "historian_agent",
+        tools_condition,
+        {
+            "tools": "historian_tools_node",
+            END: "next_agent_router",
+        },
+    )
+    workflow.add_edge(
+        "historian_tools_node", "historian_agent"
+    )  # Loop back for more reasoning
+
+    # Alarm agent: ReAct loop with tools
+    workflow.add_conditional_edges(
+        "alarm_agent",
+        tools_condition,
+        {
+            "tools": "alarm_tools_node",
+            END: "next_agent_router",
+        },
+    )
+    workflow.add_edge("alarm_tools_node", "alarm_agent")  # Loop back for more reasoning
+
+    # Knowledge agent: simple RAG retrieval (no tool execution)
     workflow.add_edge("knowledge_agent", "next_agent_router")
 
     # Aggregation conditional end (waits for all agents via barrier)

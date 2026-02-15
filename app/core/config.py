@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     vectorstore_k: int = 5
     chroma_collection_name: str = "ignition_docs"
 
-    llm_model_name: str = "llama3.1:latest"  # Changed from gemma2:9b (doesn't support tools)
+    llm_model_name: str = (
+        "llama3.1:latest"  # Changed from gemma2:9b (doesn't support tools)
+    )
 
     opc_endpoint: str = "opc.tcp://localhost:62541"
 

@@ -192,3 +192,273 @@ qualities and may cause the component to throw an error.  The ref can still be a
 if needed.  In addition, it is highly recommended that the root element does not change throughout the lifecycle
 of the component.  For more information and an example usage, see the `MessengerComponent` from the example
 components.
+
+---
+
+## Chat Module for RAG API Server
+
+This module provides a custom Perspective component that integrates with the Ignition SCADA AI Agent RAG API Server, enabling real-time AI-powered chat functionality within Ignition Perspective views.
+
+### Features
+
+- **AI Chat Interface**: Interactive chat component with message history
+- **RAG Integration**: Connects to the multi-agent RAG API server
+- **Real-time Communication**: WebSocket-based updates for instant responses
+- **Configurable Endpoint**: Easy configuration of API server URL
+- **Session Management**: Thread-based conversation tracking
+
+### Building the Module
+
+#### Prerequisites
+
+- Java JDK 11 or higher
+- Gradle (or use the included Gradle Wrapper)
+- Node.js 14+ and npm/yarn (for web assets)
+
+#### Build Steps
+
+1. **Navigate to the chat-module directory**:
+   ```bash
+   cd chat-module
+   ```
+
+2. **Build using Gradle Wrapper** (recommended):
+   ```bash
+   # On Windows
+   gradlew.bat build
+
+   # On Linux/macOS
+   ./gradlew build
+   ```
+
+3. **Locate the built module**:
+   The compiled `.modl` file will be in:
+   ```
+   build/
+   ```
+
+4. **Sign the module** (optional, for production):
+   Configure signing in `gradle.properties`:
+   ```properties
+   ignition.signing.keystoreFile=/path/to/keystore.jks
+   ignition.signing.keystorePassword=yourPassword
+   ignition.signing.certAlias=yourAlias
+   ignition.signing.certPassword=certPassword
+   ```
+
+### Installing the Module
+
+1. Open Ignition Gateway webpage (http://localhost:8088 by default)
+2. Navigate to **Config → System → Modules**
+3. Click **Install or Upgrade a Module**
+4. Select the built `.modl` file
+5. Restart the Gateway when prompted
+
+### Configuring the Chat Component
+
+#### 1. Add Component to Perspective View
+
+In the Perspective Designer:
+1. Open or create a Perspective view
+2. Drag the **Chat** component from the component palette
+3. The component will appear in your view
+
+#### 2. Configure endpointUrl Property
+
+Set the API endpoint URL in the component properties:
+
+**Option A: Direct Property Binding**
+```json
+{
+  "endpointUrl": "http://localhost:8000/api/v1/ask"
+}
+```
+
+**Option B: Using View Parameters**
+1. Create a view parameter `apiEndpoint`:
+   ```json
+   {
+     "apiEndpoint": "http://localhost:8000/api/v1/ask"
+   }
+   ```
+
+2. Bind the component's `endpointUrl` property:
+   ```
+   {view.params.apiEndpoint}
+   ```
+
+**Option C: Using Session Properties** (recommended for production)
+1. Set a session custom property `ragApiUrl`:
+   ```
+   http://localhost:8000/api/v1/ask
+   ```
+
+2. Bind the component's `endpointUrl` property:
+   ```
+   {session.custom.ragApiUrl}
+   ```
+
+#### 3. Additional Component Properties
+
+Configure other important properties:
+
+```json
+{
+  "endpointUrl": "http://localhost:8000/api/v1/ask",
+  "approvalEndpoint": "http://localhost:8000/api/v1/approve",
+  "threadId": "user_session_{session.props.auth.user.userName}",
+  "showTimestamps": true,
+  "maxMessages": 100,
+  "placeholder": "Ask about your SCADA system..."
+}
+```
+
+### Using the Chat API
+
+The chat component automatically handles API communication. Here's how it works:
+
+#### Sending Messages
+
+When a user types a message and hits send, the component makes a POST request:
+
+**Request:**
+```http
+POST http://localhost:8000/api/v1/ask
+Content-Type: application/json
+
+{
+  "question": "현재 Tank1 온도는?",
+  "thread_id": "user_session_admin"
+}
+```
+
+**Response (Simple Query):**
+```json
+{
+  "intent": "chat",
+  "answer": "**Tank1 온도:** 75°C\n\n현재 정상 범위 내에 있습니다."
+}
+```
+
+**Response (Approval Required):**
+```json
+{
+  "intent": "chat",
+  "status": "pending_approval",
+  "answer": "⚠️ 쓰기 작업은 승인이 필요합니다...",
+  "thread_id": "user_session_admin",
+  "pending_action": {
+    "action_id": "abc-123-def-456",
+    "tag_path": "[default]FAN/FAN1",
+    "value": 0,
+    "risk_level": "high",
+    "message": "Write operation requires approval..."
+  }
+}
+```
+
+#### Approving Actions
+
+When a write operation requires approval, the component displays an approval dialog. Upon approval:
+
+**Request:**
+```http
+POST http://localhost:8000/api/v1/approve
+Content-Type: application/json
+
+{
+  "thread_id": "user_session_admin",
+  "action_id": "abc-123-def-456",
+  "approved": true,
+  "operator": "admin",
+  "notes": "Approved for maintenance"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "executed",
+  "action_id": "abc-123-def-456",
+  "message": "쓰기 작업이 성공적으로 실행되었습니다",
+  "result": {
+    "tag_path": "[default]FAN/FAN1",
+    "value": 0,
+    "executed_at": "2026-02-15T14:35:00"
+  }
+}
+```
+
+### Example Query Scenarios
+
+#### 1. Real-time Tag Reading
+```
+User: "Tank1 온도는?"
+Response: 현재 Tank1/Temperature: 75°C
+```
+
+#### 2. Historical Data Analysis
+```
+User: "FAN1 어제 히스토리 보여줘"
+Response: [Chart with historical data and statistics]
+```
+
+#### 3. Alarm Investigation
+```
+User: "현재 알람을 분석해줘"
+Response: [Multi-agent analysis with alarm details, correlations, and recommendations]
+```
+
+#### 4. Control Operations (with approval)
+```
+User: "FAN1을 꺼줘"
+Response: [Approval dialog]
+→ User approves
+→ Execution confirmation
+```
+
+### Troubleshooting
+
+#### Component doesn't appear in palette
+- Verify the module is installed and activated
+- Restart the Ignition Gateway
+- Clear the designer cache
+
+#### API connection errors
+- Check the `endpointUrl` property is correctly set
+- Verify the RAG API server is running (`http://localhost:8000/api/v1/health`)
+- Check network connectivity and firewall rules
+- Review Gateway logs for detailed error messages
+
+#### Messages not sending
+- Open browser developer console for errors
+- Verify the endpoint URL format is correct
+- Check that the API server is accessible from the Gateway
+- Ensure CORS is properly configured if using different domains
+
+### Development Notes
+
+For developers modifying the chat component:
+
+1. **Web assets** are in `web/packages/client/typescript/components/`
+2. **Component registration** is in `gateway/src/main/java/.../ChatComponentRegistry.java`
+3. **Backend logic** (if any) is in the gateway scope
+4. **Rebuild web assets**: `./gradlew web:build`
+5. **Hot reload**: Use `./gradlew deployModl` with a local gateway configured
+
+### API Server Setup
+
+Ensure the RAG API Server is running before using the chat component:
+
+```bash
+# In the rag-api-server directory
+cd ../
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Verify the server is running:
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+For more information about the RAG API Server, see the [main README](../README.md).

@@ -112,6 +112,102 @@ python scripts/init_vectorstore.py
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## 🖥️ Ignition Chat Module
+
+이 프로젝트에는 Ignition Perspective에서 사용할 수 있는 커스텀 채팅 컴포넌트 모듈이 포함되어 있습니다.
+
+### Chat Module 빌드
+
+**사전 요구사항:**
+- Java JDK 11 이상
+- Gradle (또는 포함된 Gradle Wrapper 사용)
+- Node.js 14+ 및 npm/yarn
+
+**빌드 절차:**
+
+```bash
+# chat-module 디렉토리로 이동
+cd chat-module
+
+# Windows에서 빌드
+gradlew.bat build
+
+# Linux/macOS에서 빌드
+./gradlew build
+```
+
+빌드된 `.modl` 파일은 `chat-module/build/` 디렉토리에 생성됩니다.
+
+### Chat Module 설치
+
+1. Ignition Gateway 웹페이지 열기 (기본: http://localhost:8088)
+2. **Config → System → Modules** 메뉴로 이동
+3. **Install or Upgrade a Module** 클릭
+4. 빌드된 `.modl` 파일 선택
+5. Gateway 재시작
+
+### Chat 컴포넌트 설정
+
+#### 1. 컴포넌트 추가
+Perspective Designer에서 뷰를 열고, 컴포넌트 팔레트에서 **Chat** 컴포넌트를 뷰에 드래그합니다.
+
+#### 2. endpointUrl 속성 설정
+
+```json
+{
+  "endpointUrl": "http://localhost:8000/api/v1/ask"
+}
+```
+컴포넌트 속성: `{view.props.endpointUrl}`
+
+#### 3. 전체 속성 예시
+
+```json
+{
+  "endpointUrl": "http://localhost:8000/api/v1/ask",
+  "approvalEndpoint": "http://localhost:8000/api/v1/approve",
+  "threadId": "user_session_{session.props.auth.user.userName}",
+  "showTimestamps": true,
+  "maxMessages": 100,
+  "placeholder": "SCADA 시스템에 대해 질문하세요..."
+}
+```
+
+### Chat API 통신 흐름
+
+컴포넌트는 사용자 메시지를 자동으로 `/api/v1/ask` 엔드포인트로 전송합니다:
+
+**요청:**
+```json
+{
+  "question": "현재 Tank1 온도는?",
+  "thread_id": "user_session_admin"
+}
+```
+
+**응답 (일반 쿼리):**
+```json
+{
+  "intent": "chat",
+  "answer": "**Tank1 온도:** 75°C\n\n현재 정상 범위 내에 있습니다."
+}
+```
+
+**응답 (승인 필요):**
+```json
+{
+  "status": "pending_approval",
+  "pending_action": {
+    "action_id": "abc-123",
+    "tag_path": "[default]FAN/FAN1",
+    "value": 0,
+    "risk_level": "high"
+  }
+}
+```
+
+승인이 필요한 경우, 사용자가 승인하면 `/api/v1/approve` 엔드포인트로 승인 요청이 전송됩니다.
+
 ## 🔧 설정
 
 ### 환경 변수
@@ -504,6 +600,15 @@ rag-api-server/
 │   │   └── approval_storage.py # 대기 중인 작업
 │   └── core/
 │       └── config.py    # 설정
+├── chat-module/         # Ignition Perspective 채팅 컴포넌트
+│   ├── build.gradle.kts
+│   ├── common/
+│   ├── designer/
+│   ├── gateway/
+│   └── web/             # 프론트엔드 자산
+│       └── packages/
+│           ├── client/  # 런타임 컴포넌트
+│           └── designer/ # 디자이너 확장
 ├── data/
 │   ├── documents/       # RAG 문서
 │   └── chroma_db/       # 벡터 스토어

@@ -437,38 +437,39 @@ def historian_agent(state: GraphState):
     """
     Handle complex multi-domain historical analysis.
 
-    Uses ReAct pattern for multi-step reasoning with tag history tools.
+    Uses tag history tools for multi-step reasoning.
     """
     print("[Historian Agent] Analyzing historical data...")
 
+    # Extract only the latest user question
+    latest_question = state["messages"][-1].content
+
     llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm_with_tools = llm.bind_tools(tag_history_tools_list)
 
-    # Create ReAct agent with specialized historian prompt
-    historian_react_agent = create_agent(
-        model=llm,
-        tools=tag_history_tools_list,
-        system_prompt=HISTORIAN_AGENT_PROMPT,
-    )
+    agent_chain = ChatPromptTemplate.from_messages(
+        [
+            ("system", HISTORIAN_AGENT_PROMPT),
+            ("human", "{question}"),
+        ]
+    ) | llm_with_tools
 
-    # Execute agent
-    result = historian_react_agent.invoke(state)
+    response = agent_chain.invoke({"question": latest_question})
 
-    # Extract the final message and mark with agent name
-    if result.get("messages"):
-        final_msg = result["messages"][-1]
-        if isinstance(final_msg, AIMessage):
-            final_msg.name = "Historian Agent"
+    # Mark message with agent name for aggregation
+    response.name = "Historian Agent"
 
-        # Increment parallel execution counter
-        completed = state.get("agents_completed", 0) + 1
+    # Only increment counter if this is the final answer (no tool calls)
+    result = {"messages": [response]}
 
-        return {
-            "messages": [final_msg],
-            "agents_completed": completed,
-        }
+    if not hasattr(response, "tool_calls") or not response.tool_calls:
+        # Final answer without tool calls - mark as complete
+        result["agents_completed"] = state.get("agents_completed", 0) + 1
+        print("[Historian Agent] Completed (no tool calls)")
+    else:
+        print(f"[Historian Agent] Tool calls requested: {len(response.tool_calls)}")
 
-    # Increment counter even if no message (agent failed)
-    return {"agents_completed": state.get("agents_completed", 0) + 1}
+    return result
 
 
 def alarm_agent(state: GraphState):
@@ -479,34 +480,147 @@ def alarm_agent(state: GraphState):
     """
     print("[Alarm Agent] Analyzing alarm events...")
 
+    # Extract only the latest user question
+    latest_question = state["messages"][-1].content
+
     llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm_with_tools = llm.bind_tools(alarm_tools_list)
 
-    # Create ReAct agent with specialized alarm prompt
-    alarm_react_agent = create_agent(
-        model=llm,
-        tools=alarm_tools_list,
-        system_prompt=ALARM_AGENT_PROMPT,
-    )
+    agent_chain = ChatPromptTemplate.from_messages(
+        [
+            ("system", ALARM_AGENT_PROMPT),
+            ("human", "{question}"),
+        ]
+    ) | llm_with_tools
 
-    # Execute agent
-    result = alarm_react_agent.invoke(state)
+    response = agent_chain.invoke({"question": latest_question})
 
-    # Extract the final message and mark with agent name
-    if result.get("messages"):
-        final_msg = result["messages"][-1]
-        if isinstance(final_msg, AIMessage):
-            final_msg.name = "Alarm Agent"
+    # Mark message with agent name for aggregation
+    response.name = "Alarm Agent"
 
-        # Increment parallel execution counter
-        completed = state.get("agents_completed", 0) + 1
+    # Only increment counter if this is the final answer (no tool calls)
+    result = {"messages": [response]}
 
-        return {
-            "messages": [final_msg],
-            "agents_completed": completed,
-        }
+    if not hasattr(response, "tool_calls") or not response.tool_calls:
+        # Final answer without tool calls - mark as complete
+        result["agents_completed"] = state.get("agents_completed", 0) + 1
+        print("[Alarm Agent] Completed (no tool calls)")
+    else:
+        print(f"[Alarm Agent] Tool calls requested: {len(response.tool_calls)}")
 
-    # Increment counter even if no message (agent failed)
-    return {"agents_completed": state.get("agents_completed", 0) + 1}
+    return result
+
+
+def alarm_tools_node(state: GraphState):
+    """Execute alarm tools and return results."""
+    from langchain_core.messages import ToolMessage
+
+    last_message = state["messages"][-1]
+
+    if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+        return {}
+
+    tool_messages = []
+
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        tool_id = tool_call["id"]
+
+        print(f"[Alarm Tools] Executing {tool_name} with args: {tool_args}")
+
+        # Find and execute the tool
+        tool_func = None
+        for tool in alarm_tools_list:
+            if tool.name == tool_name:
+                tool_func = tool
+                break
+
+        if not tool_func:
+            tool_messages.append(
+                ToolMessage(
+                    content=f"Error: Tool {tool_name} not found",
+                    tool_call_id=tool_id,
+                )
+            )
+            continue
+
+        try:
+            import asyncio
+            if asyncio.iscoroutinefunction(tool_func.func):
+                result = asyncio.run(tool_func.func(**tool_args))
+            else:
+                result = tool_func.func(**tool_args)
+
+            tool_messages.append(
+                ToolMessage(content=str(result), tool_call_id=tool_id)
+            )
+        except Exception as e:
+            print(f"[Alarm Tools] Error: {e}")
+            tool_messages.append(
+                ToolMessage(
+                    content=f"Error executing {tool_name}: {str(e)}",
+                    tool_call_id=tool_id,
+                )
+            )
+
+    return {"messages": tool_messages}
+
+
+def historian_tools_node(state: GraphState):
+    """Execute historian tools and return results."""
+    from langchain_core.messages import ToolMessage
+
+    last_message = state["messages"][-1]
+
+    if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+        return {}
+
+    tool_messages = []
+
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        tool_id = tool_call["id"]
+
+        print(f"[Historian Tools] Executing {tool_name} with args: {tool_args}")
+
+        # Find and execute the tool
+        tool_func = None
+        for tool in tag_history_tools_list:
+            if tool.name == tool_name:
+                tool_func = tool
+                break
+
+        if not tool_func:
+            tool_messages.append(
+                ToolMessage(
+                    content=f"Error: Tool {tool_name} not found",
+                    tool_call_id=tool_id,
+                )
+            )
+            continue
+
+        try:
+            import asyncio
+            if asyncio.iscoroutinefunction(tool_func.func):
+                result = asyncio.run(tool_func.func(**tool_args))
+            else:
+                result = tool_func.func(**tool_args)
+
+            tool_messages.append(
+                ToolMessage(content=str(result), tool_call_id=tool_id)
+            )
+        except Exception as e:
+            print(f"[Historian Tools] Error: {e}")
+            tool_messages.append(
+                ToolMessage(
+                    content=f"Error executing {tool_name}: {str(e)}",
+                    tool_call_id=tool_id,
+                )
+            )
+
+    return {"messages": tool_messages}
 
 
 def knowledge_agent(state: GraphState):
