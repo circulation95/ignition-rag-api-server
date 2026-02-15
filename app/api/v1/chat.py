@@ -27,8 +27,8 @@ class QueryRequest(BaseModel):
         return self.question or self.query or ""
 
 
-@router.post("/chat")
-async def chat(request: QueryRequest, fastapi_request: Request):
+@router.post("/ask")
+async def ask(request: QueryRequest, fastapi_request: Request):
     question_text = request.get_question_text()
 
     if not question_text:
@@ -76,7 +76,7 @@ async def chat(request: QueryRequest, fastapi_request: Request):
             "tag": latest_pending.tag_path,
             "value": latest_pending.value,
             "risk_level": latest_pending.risk_level,
-            "approval_url": "/api/v1/approve",
+            "approval_url": "/approve",
             "requested_at": latest_pending.requested_at.isoformat(),
         }
 
