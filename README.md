@@ -54,10 +54,10 @@ Intent Router (복잡도 감지)
 ## 🛠️ 기술 스택
 
 - **프레임워크**: FastAPI (고성능을 위한 async/await)
-- **AI/LLM**: Ollama와 함께하는 LangChain + LangGraph 1.x (로컬 qwen3:8b 모델)
+- **AI/LLM**: Ollama (로컬 llama3.1 모델)
 - **오케스트레이션**: 병렬 실행을 위한 Send API를 갖춘 LangGraph StateGraph
-- **HITL Pattern**: LangGraph interrupt()/Command API (LangGraph 1.x)
-- **State Persistence**: SqliteSaver checkpointer (서버 재시작 시에도 상태 유지)
+- ~~**HITL Pattern**: LangGraph interrupt()/Command API (LangGraph 1.x)~~
+- ~~**State Persistence**: SqliteSaver checkpointer (서버 재시작 시에도 상태 유지)~~
 - **벡터 스토어**: Chroma (RAG 문서 검색)
 - **데이터베이스**: 파티션된 히스토리안 테이블을 갖춘 MariaDB
 - **SCADA 통합**: Ignition 태그 작업을 위한 OPC UA 프로토콜
