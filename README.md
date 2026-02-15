@@ -116,6 +116,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 이 프로젝트에는 Ignition Perspective에서 사용할 수 있는 커스텀 채팅 컴포넌트 모듈이 포함되어 있습니다.
 
+<img width="777" height="599" alt="Image" src="https://github.com/user-attachments/assets/6d020b34-61ab-4b33-a89c-2600a34cdbb3" />
+
 ### Chat Module 빌드
 
 **사전 요구사항:**
