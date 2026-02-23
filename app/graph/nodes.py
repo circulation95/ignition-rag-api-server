@@ -2,9 +2,8 @@ from langgraph.types import interrupt
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama import ChatOllama
 
-from app.core.config import settings
+from app.core.llm_factory import get_llm
 from app.graph.state import (
     GraphState,
     HumanFeedback,
@@ -29,7 +28,7 @@ def intent_router(state: GraphState):
     print("[Router] Intent classification...")
     question = state["messages"][-1].content
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
     llm_with_structure = llm.with_structured_output(IntentRouterOutput)
 
     prompt = ChatPromptTemplate.from_messages(
@@ -106,7 +105,7 @@ def generate_rag(state: GraphState):
 
 
 def generate_chat(state: GraphState):
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0.1)
+    llm = get_llm(temperature=0.1)
     llm_with_tools = llm.bind_tools(chat_tools_list)
 
     system_msg = SystemMessage(
@@ -179,7 +178,7 @@ def sql_react_agent(state: GraphState):
     """
     print("[SQL ReAct Agent] Processing database query...")
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
     # 태그 히스토리 도구 + 알람 도구 결합
     combined_tools = tag_history_tools_list + alarm_tools_list
 
@@ -365,7 +364,7 @@ def supervisor_router(state: GraphState):
     # Extract only the latest user question (not entire history)
     latest_question = state["messages"][-1].content
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
     llm_with_structure = llm.with_structured_output(SupervisorRouterOutput)
 
     supervisor_chain = (
@@ -409,7 +408,7 @@ def operations_agent(state: GraphState):
     # Extract only the latest user question
     latest_question = state["messages"][-1].content
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
     llm_with_tools = llm.bind_tools(chat_tools_list)
 
     agent_chain = ChatPromptTemplate.from_messages(
@@ -444,7 +443,7 @@ def historian_agent(state: GraphState):
     # Extract only the latest user question
     latest_question = state["messages"][-1].content
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
     llm_with_tools = llm.bind_tools(tag_history_tools_list)
 
     agent_chain = ChatPromptTemplate.from_messages(
@@ -483,7 +482,7 @@ def alarm_agent(state: GraphState):
     # Extract only the latest user question
     latest_question = state["messages"][-1].content
 
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
     llm_with_tools = llm.bind_tools(alarm_tools_list)
 
     agent_chain = ChatPromptTemplate.from_messages(
@@ -649,7 +648,7 @@ def knowledge_agent(state: GraphState):
     docs = retriever.invoke(query)
 
     # Generate response with context
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
 
     rag_chain = (
         ChatPromptTemplate.from_messages(
@@ -713,7 +712,7 @@ def aggregate_results(state: GraphState):
 
     # Synthesize final response
     agent_responses = "\n\n---\n\n".join(agent_messages)
-    llm = ChatOllama(model=settings.llm_model_name, temperature=0)
+    llm = get_llm(temperature=0)
     synthesis_chain = ChatPromptTemplate.from_template(AGGREGATION_PROMPT) | llm
     final_response = synthesis_chain.invoke({"agent_responses": agent_responses})
 

@@ -21,9 +21,18 @@ class Settings(BaseSettings):
     vectorstore_k: int = 5
     chroma_collection_name: str = "ignition_docs"
 
+    # LLM Provider: "ollama" | "openai"
+    llm_provider: str = "openai"
+
+    # Ollama 설정
     llm_model_name: str = (
         "llama3.1:latest"  # Changed from gemma2:9b (doesn't support tools)
     )
+    ollama_base_url: str = "http://localhost:11434"
+
+    # OpenAI 설정
+    openai_api_key: str = ""
+    openai_model_name: str = "gpt-4o-mini"
 
     opc_endpoint: str = "opc.tcp://localhost:62541"
 
