@@ -1,11 +1,10 @@
-"""Chroma 벡터스토어 서비스 - FAISS에서 전환"""
+"""Chroma 벡터스토어 서비스 - 임베딩 provider 전환 지원 (OpenAI / HuggingFace)"""
 
 from __future__ import annotations
 
 import os
 from typing import Optional
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.vectorstores import VectorStoreRetriever
 
@@ -16,13 +15,43 @@ _retriever: VectorStoreRetriever | None = None
 _vectorstore: Chroma | None = None
 
 
-def get_embeddings() -> HuggingFaceEmbeddings:
-    """임베딩 모델 인스턴스 생성"""
-    return HuggingFaceEmbeddings(
-        model_name=settings.embedding_model_name,
-        model_kwargs={"device": settings.embedding_device},
-        encode_kwargs={"normalize_embeddings": settings.embedding_normalize},
-    )
+def get_embeddings():
+    """
+    임베딩 모델 인스턴스 생성.
+
+    EMBEDDING_PROVIDER 설정에 따라:
+      - "openai"       → OpenAIEmbeddings (text-embedding-3-large, 한국어 최적)
+      - "huggingface"  → HuggingFaceEmbeddings (로컬, GPU 가능)
+    """
+    provider = settings.embedding_provider.lower()
+
+    if provider == "openai":
+        from langchain_openai import OpenAIEmbeddings
+
+        if not settings.openai_api_key:
+            raise ValueError(
+                "EMBEDDING_PROVIDER=openai 이지만 OPENAI_API_KEY가 설정되지 않았습니다."
+            )
+
+        return OpenAIEmbeddings(
+            model=settings.embedding_model_name,
+            api_key=settings.openai_api_key,
+        )
+
+    elif provider == "huggingface":
+        from langchain_huggingface import HuggingFaceEmbeddings
+
+        return HuggingFaceEmbeddings(
+            model_name=settings.embedding_hf_model_name,
+            model_kwargs={"device": settings.embedding_device},
+            encode_kwargs={"normalize_embeddings": settings.embedding_normalize},
+        )
+
+    else:
+        raise ValueError(
+            f"지원하지 않는 EMBEDDING_PROVIDER: '{settings.embedding_provider}'. "
+            "'openai' 또는 'huggingface'를 사용하세요."
+        )
 
 
 def init_retriever() -> bool:
@@ -56,7 +85,8 @@ def init_retriever() -> bool:
                 search_type="similarity",
                 search_kwargs={"k": settings.vectorstore_k},
             )
-            print(f"[Vectorstore] Chroma 로드 완료: {collection_count}개 문서")
+            print(f"[Vectorstore] Chroma 로드 완료: {collection_count}개 문서 "
+                  f"(임베딩: {settings.embedding_provider}/{settings.embedding_model_name})")
             return True
         else:
             print("[Vectorstore] Chroma 컬렉션이 비어있습니다.")

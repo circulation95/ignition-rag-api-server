@@ -29,7 +29,9 @@ def intent_router(state: GraphState):
     question = state["messages"][-1].content
 
     llm = get_llm(temperature=0)
-    llm_with_structure = llm.with_structured_output(IntentRouterOutput)
+    # json_mode: OpenAI 전용 structured-outputs 대신 범용 JSON 모드 사용
+    # (Qwen, Claude 등 대부분의 모델이 지원)
+    llm_with_structure = llm.with_structured_output(IntentRouterOutput, method="json_mode")
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -68,6 +70,8 @@ CRITICAL RULES:
 - If asking "가장 최근", "최근에", "언제 발생" with alarm → 'sql_search'
 - If a specific date/time is mentioned → ALWAYS 'sql_search'
 - ONLY if asking about alarm code MEANING/DEFINITION → 'rag_search'
+
+Respond ONLY in valid JSON format: {{"destination": "<category>"}}
 """,
             ),
             ("human", "{question}"),
@@ -365,7 +369,8 @@ def supervisor_router(state: GraphState):
     latest_question = state["messages"][-1].content
 
     llm = get_llm(temperature=0)
-    llm_with_structure = llm.with_structured_output(SupervisorRouterOutput)
+    # json_mode: OpenAI 전용 structured-outputs 대신 범용 JSON 모드 사용
+    llm_with_structure = llm.with_structured_output(SupervisorRouterOutput, method="json_mode")
 
     supervisor_chain = (
         ChatPromptTemplate.from_messages(
