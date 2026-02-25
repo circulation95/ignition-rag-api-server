@@ -31,16 +31,23 @@ def format_timestamp(ts_ms: int) -> str:
 
 
 @tool
-def get_latest_alarm_for_tag(tag_path: str) -> str:
+def get_latest_alarm_for_tag(tag_path: Optional[str] = None) -> str:
     """
-    특정 태그의 가장 최근 알람 조회.
+    특정 태그의 가장 최근 알람 조회. tag_path를 지정하지 않으면 전체 태그 중 가장 최근 알람을 반환.
 
     Args:
-        tag_path: 태그 경로 (예: "FAN1", "Smoke_Detect", "Motor") - 부분 일치 검색
+        tag_path: 태그 경로 (예: "FAN1", "Smoke_Detect", "Motor") - 부분 일치 검색. None이면 전체 조회.
 
     Returns:
         가장 최근 알람 정보 (발생 시간, 태그, 상태)
     """
+    if tag_path:
+        where_clause = f"WHERE source LIKE '%{tag_path}%'"
+        not_found_msg = f"'{tag_path}' 관련 알람 기록이 없습니다."
+    else:
+        where_clause = ""
+        not_found_msg = "알람 기록이 없습니다."
+
     query = f"""
     SELECT
         eventtime,
@@ -49,7 +56,7 @@ def get_latest_alarm_for_tag(tag_path: str) -> str:
         priority,
         eventtype
     FROM alarm_events
-    WHERE source LIKE '%{tag_path}%'
+    {where_clause}
     ORDER BY eventtime DESC
     LIMIT 1
     """
@@ -57,15 +64,7 @@ def get_latest_alarm_for_tag(tag_path: str) -> str:
     try:
         result = get_sql_db().run(query)
         if not result or result == "[]" or result == "":
-            return f"'{tag_path}' 관련 알람 기록이 없습니다."
-
-        # 결과 파싱 및 포맷팅
-        # eventtype: 0=Active, 1=Clear, 2=Acknowledged
-        event_status_map = {
-            "0": "Active (발생)",
-            "1": "Clear (해제)",
-            "2": "Acknowledged (확인)",
-        }
+            return not_found_msg
 
         return f"최근 알람 조회 결과:\n{result}"
     except Exception as e:

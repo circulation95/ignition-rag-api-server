@@ -12,6 +12,8 @@ from app.graph.nodes import (
     # Modern interrupt-based HITL (LangGraph 1.x)
     execute_tool_with_approval,
     process_human_approval,
+    # Tag Disambiguation
+    tag_disambiguation_node,
     # Other nodes
     generate_chat,
     generate_rag,
@@ -80,6 +82,20 @@ def _check_aggregation_ready(state: GraphState):
         return END
 
 
+def _check_tag_disambiguation(state: GraphState):
+    """
+    태그 Disambiguation 결과에 따라 라우팅.
+
+    - tag_candidates 있음 → 'disambiguate' → END (프론트엔드에 카드 UI 반환)
+    - tag_candidates 없음 → 'continue' → generate_chat (정상 진행)
+    """
+    if state.get("tag_candidates"):
+        print("[Router] 태그 후보 발견, Disambiguation 응답 반환")
+        return "disambiguate"
+    print("[Router] 태그 확정됨 또는 검색 건너뜀, generate_chat 진행")
+    return "continue"
+
+
 def _route_to_agents_sequential(state: GraphState):
     """
     Route supervisor to required agents sequentially.
@@ -144,6 +160,7 @@ def build_graph(checkpointer=None, use_modern_hitl: bool = True):
     workflow.add_node("intent_router", intent_router)
     workflow.add_node("retrieve_rag", retrieve_rag)
     workflow.add_node("generate_rag", generate_rag)
+    workflow.add_node("tag_disambiguation_node", tag_disambiguation_node)  # Disambiguation
     workflow.add_node("generate_chat", generate_chat)
     workflow.add_node("sql_react_agent", sql_react_agent)
 
@@ -182,10 +199,22 @@ def build_graph(checkpointer=None, use_modern_hitl: bool = True):
         "intent_router",
         _check_query_complexity,
         {
-            "supervisor": "supervisor_router",  # Complex multi-domain queries
-            "sql_search": "sql_react_agent",  # Fast path: historical data
-            "rag_search": "retrieve_rag",  # Fast path: documentation
-            "chat": "generate_chat",  # Fast path: real-time operations
+            "supervisor": "supervisor_router",           # Complex multi-domain queries
+            "sql_search": "sql_react_agent",             # Fast path: historical data
+            "rag_search": "retrieve_rag",                # Fast path: documentation
+            "chat": "tag_disambiguation_node",           # Chat: 태그 Disambiguation 먼저
+        },
+    )
+
+    # ============================================================================
+    # Tag Disambiguation → generate_chat 또는 END (카드 UI 반환)
+    # ============================================================================
+    workflow.add_conditional_edges(
+        "tag_disambiguation_node",
+        _check_tag_disambiguation,
+        {
+            "disambiguate": END,      # 복수 후보 → 프론트엔드에 카드 반환
+            "continue": "generate_chat",  # 단일/없음 → 정상 진행
         },
     )
 

@@ -9,6 +9,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.graph.builder import build_graph
 from app.services.vectorstore import init_retriever
+from app.services.tag_store import init_tag_store
 
 
 # LangSmith 추적 활성화
@@ -31,6 +32,11 @@ async def lifespan(app: FastAPI):
             print("[System] 벡터 DB 없음. RAG 비활성.")
     except Exception as exc:
         print(f"[Warning] 벡터 DB 로드 실패: {exc}")
+
+    try:
+        init_tag_store()
+    except Exception as exc:
+        print(f"[Warning] 태그 스토어 초기화 실패: {exc}")
 
     # No checkpointer - state is not persisted (stateless mode)
     print("[Checkpointer] Stateless mode - no state persistence")

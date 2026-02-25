@@ -86,3 +86,7 @@ class GraphState(TypedDict):
     retry_count: Optional[int]
     agents_completed: Optional[int]  # Parallel execution barrier
     aggregation_ready: Optional[bool]  # Flag for final aggregation
+
+    # Tag Disambiguation (벡터 검색 기반 태그 명확화)
+    tag_candidates: Optional[List[Dict[str, Any]]]  # 복수 후보 → 카드 UI 표시
+    confirmed_tag_path: Optional[str]  # 확정된 태그 경로 (단일 매칭 또는 사용자 선택)

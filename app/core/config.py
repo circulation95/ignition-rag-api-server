@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     vectorstore_path: str = "./chroma_db"
     vectorstore_k: int = 5
     chroma_collection_name: str = "ignition_docs"
+    chroma_tag_collection_name: str = "ignition_tags"  # 태그 Disambiguation 전용
 
     # ── LLM Provider 설정 ─────────────────────────────────────────
     # provider: "ollama" | "openai" | "openrouter"
@@ -51,10 +52,10 @@ class Settings(BaseSettings):
 
     # ── SQL ──────────────────────────────────────────────────────
     sql_host: str = "127.0.0.1"
-    sql_port: int = 3306
-    sql_user: str = "ignition"
-    sql_password: str = "password"
-    sql_db: str = "ignition"
+    sql_port: int = 5432
+    sql_user: str = "postgres"
+    sql_password: str = "1111"
+    sql_db: str = "postgres"
 
     # ── LangSmith 추적 설정 ───────────────────────────────────────
     langsmith_tracing: bool = False

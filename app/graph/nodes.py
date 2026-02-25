@@ -108,13 +108,90 @@ def generate_rag(state: GraphState):
     return {"messages": [AIMessage(content=content)]}
 
 
+def tag_disambiguation_node(state: GraphState):
+    """
+    벡터 유사도 검색으로 태그 Disambiguation 수행.
+
+    흐름:
+    - confirmed_tag_path가 이미 있으면 (USER_SELECTION 처리됨) → 건너뜀
+    - 태그 스토어 없거나 비어있으면 → 건너뜀
+    - 제어 키워드가 없으면 (읽기 전용 쿼리) → 건너뜀
+    - 검색 결과 0개 → 건너뜀 (LLM이 처리)
+    - 검색 결과 1개 → confirmed_tag_path 설정 후 진행
+    - 검색 결과 2~3개 → tag_candidates 설정 (카드 UI 표시용, 그래프 종료)
+    """
+    from app.services.tag_store import get_tag_store, search_tags as _search_tags
+
+    # USER_SELECTION으로 이미 태그가 확정된 경우 건너뜀
+    if state.get("confirmed_tag_path"):
+        print("[TagDisambiguation] 이미 확정된 태그 경로, 건너뜀")
+        return {}
+
+    # 태그 스토어가 준비되지 않았으면 건너뜀
+    if not get_tag_store():
+        print("[TagDisambiguation] 태그 스토어 없음, 건너뜀")
+        return {}
+
+    question = state["messages"][-1].content
+
+    # 제어 명령 키워드 감지 (쓰기 작업에만 Disambiguation 적용)
+    control_keywords = [
+        "켜줘", "꺼줘", "켜", "꺼", "on", "off",
+        "설정", "변경", "바꿔", "올려", "낮춰", "높여",
+        "시작", "정지", "멈춰", "stop", "start",
+        "열어", "닫아", "open", "close",
+        "쓰기", "write", "제어",
+    ]
+    is_control_command = any(kw in question.lower() for kw in control_keywords)
+
+    if not is_control_command:
+        print("[TagDisambiguation] 제어 명령 아님, 건너뜀")
+        return {}
+
+    print(f"[TagDisambiguation] 태그 검색 시작: '{question}'")
+    candidates = _search_tags(question, k=3)
+
+    if not candidates:
+        print("[TagDisambiguation] 검색 결과 없음, LLM에게 위임")
+        return {}
+
+    if len(candidates) == 1:
+        # 유일한 매칭 → 확정
+        print(f"[TagDisambiguation] 단일 매칭 확정: {candidates[0].tag_path} (score={candidates[0].score})")
+        return {"confirmed_tag_path": candidates[0].tag_path}
+
+    # 복수 후보 → Disambiguation 카드 표시
+    print(f"[TagDisambiguation] {len(candidates)}개 후보 발견 → 사용자 선택 요청")
+    return {
+        "tag_candidates": [
+            {
+                "tag_path": c.tag_path,
+                "display_name": c.display_name,
+                "description": c.description,
+                "tag_type": c.tag_type,
+                "score": c.score,
+            }
+            for c in candidates
+        ]
+    }
+
+
 def generate_chat(state: GraphState):
     llm = get_llm(temperature=0.1)
     llm_with_tools = llm.bind_tools(chat_tools_list)
 
-    system_msg = SystemMessage(
-        content="You are an Ignition SCADA Operator. Answer in Korean."
-    )
+    confirmed_path = state.get("confirmed_tag_path")
+
+    if confirmed_path:
+        system_content = (
+            "You are an Ignition SCADA Operator. Answer in Korean.\n\n"
+            f"IMPORTANT: The user has confirmed they want to operate on tag: {confirmed_path}\n"
+            "Use this EXACT tag path in all read_ignition_tag and write_ignition_tag tool calls."
+        )
+    else:
+        system_content = "You are an Ignition SCADA Operator. Answer in Korean."
+
+    system_msg = SystemMessage(content=system_content)
     # Only use the latest user message
     response = llm_with_tools.invoke([system_msg, state["messages"][-1]])
     return {"messages": [response]}
