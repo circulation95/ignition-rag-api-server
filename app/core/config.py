@@ -48,7 +48,10 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # ── OPC UA ───────────────────────────────────────────────────
-    opc_endpoint: str = "opc.tcp://localhost:62541"
+    opc_endpoint: str = "opc.tcp://127.0.0.1:62541/discovery"
+    opc_security_policy: str = "None"  # "None" 또는 "Basic256Sha256"
+    opc_username: str = "Admin"
+    opc_password: str = "P@ssw0rd"
 
     # ── SQL ──────────────────────────────────────────────────────
     sql_host: str = "127.0.0.1"

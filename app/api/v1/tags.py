@@ -10,6 +10,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.services.opc import get_opc_client
 from app.services.tag_store import (
     delete_tag_store,
     get_tag_count,
@@ -23,21 +24,6 @@ router = APIRouter()
 
 
 # ── Request/Response 모델 ──────────────────────────────────────────
-
-
-class TagItem(BaseModel):
-    """인덱싱할 태그 정보"""
-
-    tag_path: str               # 예: [default]Line1/FAN/FAN1
-    display_name: str = ""      # 예: FAN1
-    description: str = ""       # 예: Line 1 Fan Motor
-    tag_type: str = ""          # 예: Boolean, Float4, Int4
-
-
-class TagIngestRequest(BaseModel):
-    """태그 인덱싱 요청"""
-
-    tags: List[TagItem]
 
 
 class TagSearchRequest(BaseModel):
@@ -60,22 +46,14 @@ class TagCandidateResponse(BaseModel):
 # ── 엔드포인트 ────────────────────────────────────────────────────
 
 
-@router.post("/ingest")
-async def ingest_tags_endpoint(request: TagIngestRequest):
+@router.post("/sync")
+async def sync_tags_from_opc(provider: str = "[default]"):
     """
-    Ignition 태그 목록을 벡터 스토어에 인덱싱.
-
-    Ignition Gateway Script 예시:
-    ```python
-    import system
-    tags = [
-        {"tag_path": "[default]Line1/FAN/FAN1", "display_name": "FAN1",
-         "description": "Line 1 Fan Motor", "tag_type": "Boolean"},
-    ]
-    system.net.httpPost("http://localhost:8000/tags/ingest",
-                        "application/json", system.util.jsonEncode({"tags": tags}))
-    ```
-
+    Ignition OPC UA 서버에서 태그 목록을 직접 읽어와 벡터 스토어에 인덱싱.
+    
+    Args:
+        provider: 검색할 Tag Provider (예: "[default]")
+        
     Returns:
         인덱싱된 태그 수와 현재 총 태그 수
     """
@@ -88,21 +66,30 @@ async def ingest_tags_endpoint(request: TagIngestRequest):
                 detail="태그 벡터 스토어를 초기화할 수 없습니다. 서버 로그를 확인하세요.",
             )
 
-    tag_dicts = [t.model_dump() for t in request.tags]
-    indexed_count = ingest_tags(tag_dicts)
-
-    if indexed_count == 0 and request.tags:
+    opc_client = get_opc_client()
+    try:
+        tags = await opc_client.get_all_tags(provider=provider)
+        if not tags:
+            raise HTTPException(
+                status_code=404,
+                detail=f"태그를 찾을 수 없습니다. Provider: {provider}",
+            )
+            
+        indexed_count = ingest_tags(tags)
+        
+        return {
+            "status": "ok",
+            "indexed": indexed_count,
+            "total": get_tag_count(),
+            "message": f"{indexed_count}개 태그 인덱싱 완료 (전체 {get_tag_count()}개)",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail="태그 인덱싱 실패. 서버 로그를 확인하세요.",
+            detail=f"OPC UA 태그 동기화 실패: {str(e)}",
         )
-
-    return {
-        "status": "ok",
-        "indexed": indexed_count,
-        "total": get_tag_count(),
-        "message": f"{indexed_count}개 태그 인덱싱 완료 (전체 {get_tag_count()}개)",
-    }
 
 
 @router.get("/search")

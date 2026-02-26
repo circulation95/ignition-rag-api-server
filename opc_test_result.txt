@@ -1,0 +1,24 @@
+
+=== Discovery: opc.tcp://127.0.0.1:62541/discovery ===
+Found 1 endpoints:
+  [0] URL: opc.tcp://127.0.0.1:62541
+       Policy: http://opcfoundation.org/UA/SecurityPolicy#None
+       Mode: 1
+
+=== Discovery: opc.tcp://127.0.0.1:62541 ===
+Found 1 endpoints:
+  [0] URL: opc.tcp://127.0.0.1:62541
+       Policy: http://opcfoundation.org/UA/SecurityPolicy#None
+       Mode: 1
+
+=== Discovery: opc.tcp://localhost:62541/discovery ===
+Found 1 endpoints:
+  [0] URL: opc.tcp://localhost:62541
+       Policy: http://opcfoundation.org/UA/SecurityPolicy#None
+       Mode: 1
+
+=== Discovery: opc.tcp://localhost:62541 ===
+Found 1 endpoints:
+  [0] URL: opc.tcp://localhost:62541
+       Policy: http://opcfoundation.org/UA/SecurityPolicy#None
+       Mode: 1

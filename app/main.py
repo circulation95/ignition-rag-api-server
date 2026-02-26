@@ -9,7 +9,9 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.graph.builder import build_graph
 from app.services.vectorstore import init_retriever
-from app.services.tag_store import init_tag_store
+from app.services.tag_store import init_tag_store, ingest_tags
+from app.services.opc import get_opc_client
+import asyncio
 
 
 # LangSmith 추적 활성화
@@ -37,6 +39,20 @@ async def lifespan(app: FastAPI):
         init_tag_store()
     except Exception as exc:
         print(f"[Warning] 태그 스토어 초기화 실패: {exc}")
+
+    # 서버 시작 시 OPC UA에서 전체 태그 읽어와서 동기화
+    try:
+        print("[System] OPC UA 서버에서 태그 동기화 시도 중...")
+        opc_client = get_opc_client()
+        # 주의: Ignition Gateway가 꺼져있거나 접속 불안정하면 에러 로그만 남기고 넘어감
+        tags = await opc_client.get_all_tags(provider="[default]")
+        if tags:
+            indexed = ingest_tags(tags)
+            print(f"[System] 태그 동기화 완료: {indexed}개 인덱싱 됨.")
+        else:
+            print("[Warning] OPC UA 동기화 결과 태그가 없습니다.")
+    except Exception as exc:
+        print(f"[Warning] OPC 태그 초기 동기화 실패: {exc}")
 
     # No checkpointer - state is not persisted (stateless mode)
     print("[Checkpointer] Stateless mode - no state persistence")

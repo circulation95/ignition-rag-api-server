@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 
 from app.graph.state import PendingAction
 from app.services.opc import get_opc_client
+from app.services.tag_store import ingest_tags
 
 
 def assess_risk(tag_path: str, value: Any) -> str:
@@ -102,4 +103,30 @@ def write_ignition_tag(tag_path: str, value: str):
     }
 
 
-chat_tools_list = [read_ignition_tag, write_ignition_tag]
+@tool
+async def sync_ignition_tags_to_vector_store(provider: str = "[default]") -> str:
+    """
+    Ignition SCADA 태그 정보를 벡터 스토어(ChromaDB)와 동기화합니다.
+    사용자가 '태그 동기화해줘', '태그 정보 업데이트해줘' 라고 할 때 사용합니다.
+    
+    Args:
+        provider: 검색할 Tag Provider (기본값: "[default]")
+        
+    Returns:
+        동기화 결과 요약 문자열
+    """
+    opc_client = get_opc_client()
+    print(f"[Tool] Syncing tags from OPC UA provider: {provider}")
+    
+    try:
+        tags = await opc_client.get_all_tags(provider=provider)
+        if not tags:
+            return f"Error: No tags found under provider '{provider}'."
+            
+        indexed_count = ingest_tags(tags)
+        return f"Successfully synchronized {indexed_count} tags from {provider} to the vector store."
+    except Exception as e:
+        return f"Error occurred during tag synchronization: {e}"
+
+
+chat_tools_list = [read_ignition_tag, write_ignition_tag, sync_ignition_tags_to_vector_store]

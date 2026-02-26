@@ -1,27 +1,41 @@
 import asyncio
 import logging
+import os
+from pathlib import Path
 from typing import Any, Optional, Sequence
 from asyncua import Client, ua
 
 logger = logging.getLogger(__name__)
 
+# 인증서 경로 (프로젝트 루트 기준)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_CERT_PATH = _PROJECT_ROOT / "client_cert.pem"
+_KEY_PATH = _PROJECT_ROOT / "client_key.pem"
+
 
 class IgnitionOpcClient:
     """
-    Ignition OPC UA Server (Security=None, Anonymous) 전용 클라이언트
-    - Username/Password/인증서 사용 안 함
+    Ignition OPC UA Server 전용 클라이언트
+    - Basic256Sha256 + 자체 서명 인증서 사용
+    - Anonymous 또는 Username/Password 인증 지원
     - 연결 유지 + 끊기면 재연결(backoff)
     """
 
     def __init__(
         self,
-        endpoint_url: str = "opc.tcp://localhost:62541",
+        endpoint_url: str = "opc.tcp://127.0.0.1:62541/discovery",
         namespace_index: int = 2,
         reconnect_backoff: Sequence[float] = (0.5, 1.0, 2.0, 3.0, 5.0),
+        username: str = "",
+        password: str = "",
+        security_policy: str = "None",
     ):
         self.endpoint_url = endpoint_url.rstrip("/")
         self.namespace_index = namespace_index
         self.reconnect_backoff = tuple(reconnect_backoff)
+        self.username = username
+        self.password = password
+        self.security_policy = security_policy
 
         self._client: Optional[Client] = None
         self._connected: bool = False
@@ -41,12 +55,33 @@ class IgnitionOpcClient:
         return f"ns={self.namespace_index};s={tag_path}"
 
     async def _connect_once(self):
-        client = Client(url=self.endpoint_url)
-        # ✅ Security=None / Anonymous (아무 설정도 하지 않음)
+        # /discovery 경로는 Endpoint 탐색 전용이므로 실제 연결 시에는 제거
+        connect_url = self.endpoint_url
+        if connect_url.endswith("/discovery"):
+            connect_url = connect_url[: -len("/discovery")]
+
+        client = Client(url=connect_url)
+
+        # Username/Password가 설정된 경우 인증 정보 세팅
+        if self.username:
+            client.set_user(self.username)
+            client.set_password(self.password)
+
+        # 보안 정책 적용
+        if self.security_policy.lower() != "none" and _CERT_PATH.exists() and _KEY_PATH.exists():
+            await client.set_security_string(
+                f"{self.security_policy},SignAndEncrypt,{_CERT_PATH},{_KEY_PATH}"
+            )
+            auth_mode = f"{self.security_policy}/User={self.username}" if self.username else f"{self.security_policy}/Anonymous"
+            logger.info("OPC UA connecting with %s...", auth_mode)
+        else:
+            # Security=None / Anonymous 모드
+            logger.info("Security=None / Anonymous 모드로 연결합니다.")
+
         await client.connect()
         self._client = client
         self._connected = True
-        logger.info("✅ OPC UA connected (Anonymous / Security=None)")
+        logger.info("✅ OPC UA connected to %s", connect_url)
 
     async def _connect_with_retries(self):
         last_err: Optional[Exception] = None
@@ -139,3 +174,74 @@ class IgnitionOpcClient:
                 self._connected = False
                 self._client = None
             return {"tag": tag_path, "nodeId": node_id, "error": str(e)}
+
+    async def get_all_tags(self, provider: str = "[default]") -> list[dict]:
+        """
+        Ignition의 지정된 Tag Provider 아래 전체 태그를 재귀적으로 검색합니다.
+        
+        Args:
+            provider: 검색할 Tag Provider (예: "[default]")
+            
+        Returns:
+            list[dict]: 검색된 태그 목록 (tag_path, display_name, description, tag_type)
+        """
+        await self._ensure()
+        try:
+            # Ignition 태그 루트 폴더 (예: "[default]") 접근
+            # provider 자체가 이미 s=[default]와 같은 노드 경로를 의미함
+            root_node_id = f"ns={self.namespace_index};s={provider}"
+            root_node = self._client.get_node(root_node_id)
+            
+            tags = await self._browse_tags(root_node, path=provider)
+            logger.info("OPC UA browse completed: found %d tags under %s", len(tags), provider)
+            return tags
+            
+        except Exception as e:
+            logger.error("Failed to browse tags under %s: %s", provider, e)
+            return []
+
+    async def _browse_tags(self, node, path: str = "") -> list[dict]:
+        """주어진 노드 아래를 재귀적으로 탐색하여 Variable 노드를 태그로 반환"""
+        tags = []
+        try:
+            children = await node.get_children()
+            
+            for child in children:
+                try:
+                    bname = await child.read_browse_name()
+                    name = bname.Name
+                    node_class = await child.read_node_class()
+                    
+                    # Ignition에서는 provider 아래 경로가 /로 구분됨
+                    if path.endswith("]"):
+                        current_path = f"{path}{name}"
+                    else:
+                        current_path = f"{path}/{name}"
+                    
+                    if node_class == ua.NodeClass.Variable:
+                        try:
+                            # 값을 읽어 타입 확인
+                            dv = await child.read_data_value()
+                            tag_type = dv.Value.VariantType.name if dv.Value.VariantType else "Unknown"
+                            
+                            tags.append({
+                                "tag_path": current_path,
+                                "display_name": name,
+                                "description": "",  # OPC에서 설명은 별도 Description 속성이거나 프로퍼티
+                                "tag_type": tag_type
+                            })
+                        except Exception as inner_e:
+                            logger.debug("Failed to read variable properties for %s: %s", current_path, inner_e)
+                    
+                    elif node_class in (ua.NodeClass.Object, ua.NodeClass.ObjectType):
+                        # 폴더(Object)인 경우 재귀 호출
+                        sub_tags = await self._browse_tags(child, current_path)
+                        tags.extend(sub_tags)
+                        
+                except Exception as e:
+                    logger.debug("Failed to read child node: %s", e)
+                    
+        except Exception as e:
+            logger.debug("Failed to get children for %s: %s", path, e)
+            
+        return tags
