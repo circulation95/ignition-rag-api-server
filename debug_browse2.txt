@@ -1,0 +1,38 @@
+﻿python : Requested session timeout 
+to be 3600000ms, got 120000ms inste
+ad
+위치 줄:1 문자:1
++ python debug_browse.py 2>&1 | Out
+-File -FilePath debug_browse2.txt -
+E ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotS 
+   pecified: (Requested sessi...2  
+  0000ms instead:String) [], Rem   
+ oteException
+    + FullyQualifiedErrorId : Nati 
+   veCommandError
+ 
+Namespaces: ['http://opcfoundation.org/UA/', 'urn:inductiveautomation:ignition:opcua:server:a8dfbb6e-7e4a-47be-a325-84caed5e1bab', 'urn:inductiveautomation:ignition:opcua:tags', 'http://opcfoundation.org/UA/BACnet/']
+
+=== All ns=2 nodes under Objects (depth 1) ===
+  (none found at depth 1 in ns=2)
+
+=== Depth-2 scan for ns=2 nodes ===
+
+=== Try direct tag node access ===
+  ns=2;s=[default] -> 0 children
+  ns=2;s=[System]Gateway/CurrentVersion -> 0 children
+  ns=1;s=Devices -> 176 children
+    ns=1 '[F1_BTSTO_AC_01]' id='[F1_BTSTO_AC_01]'
+    ns=1 '[F2_MMR_AC_06]' id='[F2_MMR_AC_06]'
+    ns=1 '[F2_MMR_AC_05]' id='[F2_MMR_AC_05]'
+
+=== First Device children (ns=1 Devices first child) ===
+  First device: [F1_BTSTO_AC_01]
+    ns=1 '[Diagnostics]' class=Object id='[F1_BTSTO_AC_01][Diagnostics]'
+      ns=1 'Sampling' class=Object id='[F1_BTSTO_AC_01][Diagnostics]/Sampling'
+      ns=1 'Name' class=Variable id='[F1_BTSTO_AC_01][Diagnostics]/Name'
+      ns=1 'Hostname' class=Variable id='[F1_BTSTO_AC_01][Diagnostics]/Hostname'
+      ns=1 'Port' class=Variable id='[F1_BTSTO_AC_01][Diagnostics]/Port'
+      ns=1 'State' class=Variable id='[F1_BTSTO_AC_01][Diagnostics]/State'

@@ -175,6 +175,17 @@ class IgnitionOpcClient:
                 self._client = None
             return {"tag": tag_path, "nodeId": node_id, "error": str(e)}
 
+    async def _get_tags_namespace_index(self) -> int:
+        """Ignition 태그 네임스페이스 인덱스를 동적으로 조회"""
+        tag_uri = "urn:inductiveautomation:ignition:opcua:tags"
+        try:
+            idx = await self._client.get_namespace_index(tag_uri)
+            logger.debug("Ignition tags namespace index: %d", idx)
+            return idx
+        except Exception:
+            logger.warning("Could not resolve tags namespace URI, using default index=%d", self.namespace_index)
+            return self.namespace_index
+
     async def get_all_tags(self, provider: str = "[default]") -> list[dict]:
         """
         Ignition의 지정된 Tag Provider 아래 전체 태그를 재귀적으로 검색합니다.
@@ -187,20 +198,50 @@ class IgnitionOpcClient:
         """
         await self._ensure()
         try:
-            # Ignition 태그 루트 폴더 (예: "[default]") 접근
-            # provider 자체가 이미 s=[default]와 같은 노드 경로를 의미함
-            root_node_id = f"ns={self.namespace_index};s={provider}"
+            # 네임스페이스 인덱스를 URI로 동적 조회
+            ns_idx = await self._get_tags_namespace_index()
+            
+            # Ignition 태그 루트 노드 접근 (예: ns=2;s=[default])
+            root_node_id = f"ns={ns_idx};s={provider}"
             root_node = self._client.get_node(root_node_id)
             
-            tags = await self._browse_tags(root_node, path=provider)
-            logger.info("OPC UA browse completed: found %d tags under %s", len(tags), provider)
-            return tags
+            # 직접 browse 시도
+            children = await root_node.get_children()
+            logger.info("Tag provider root '%s' has %d children (ns=%d)", provider, len(children), ns_idx)
+            
+            if children:
+                tags = await self._browse_tags(root_node, path=provider, ns_idx=ns_idx)
+                logger.info("OPC UA browse completed: found %d tags under %s", len(tags), provider)
+                return tags
+            
+            # fallback: Objects 노드 아래에서 해당 ns 노드 검색
+            logger.warning(
+                "'%s' (ns=%d) has no children. Trying fallback browse from Objects node...",
+                provider, ns_idx
+            )
+            objects_node = self._client.get_node("i=85")
+            obj_children = await objects_node.get_children()
+            all_tags = []
+            for obj in obj_children:
+                if obj.nodeid.NamespaceIndex == ns_idx:
+                    bname = await obj.read_browse_name()
+                    sub_tags = await self._browse_tags(obj, path=f"{provider}/{bname.Name}", ns_idx=ns_idx)
+                    all_tags.extend(sub_tags)
+            
+            if all_tags:
+                logger.info("Fallback browse found %d tags", len(all_tags))
+            else:
+                logger.warning(
+                    "No tags found via any browse strategy. "
+                    "Ignition Gateway에서 Tag Provider OPC UA 노출이 활성화됐는지 확인하세요."
+                )
+            return all_tags
             
         except Exception as e:
             logger.error("Failed to browse tags under %s: %s", provider, e)
             return []
 
-    async def _browse_tags(self, node, path: str = "") -> list[dict]:
+    async def _browse_tags(self, node, path: str = "", ns_idx: int = 2) -> list[dict]:
         """주어진 노드 아래를 재귀적으로 탐색하여 Variable 노드를 태그로 반환"""
         tags = []
         try:
@@ -212,7 +253,7 @@ class IgnitionOpcClient:
                     name = bname.Name
                     node_class = await child.read_node_class()
                     
-                    # Ignition에서는 provider 아래 경로가 /로 구분됨
+                    # Ignition 태그 경로 구성: [default]TagName 또는 [default]/Folder/TagName
                     if path.endswith("]"):
                         current_path = f"{path}{name}"
                     else:
@@ -220,22 +261,19 @@ class IgnitionOpcClient:
                     
                     if node_class == ua.NodeClass.Variable:
                         try:
-                            # 값을 읽어 타입 확인
                             dv = await child.read_data_value()
                             tag_type = dv.Value.VariantType.name if dv.Value.VariantType else "Unknown"
-                            
                             tags.append({
                                 "tag_path": current_path,
                                 "display_name": name,
-                                "description": "",  # OPC에서 설명은 별도 Description 속성이거나 프로퍼티
+                                "description": "",
                                 "tag_type": tag_type
                             })
                         except Exception as inner_e:
-                            logger.debug("Failed to read variable properties for %s: %s", current_path, inner_e)
+                            logger.debug("Failed to read variable %s: %s", current_path, inner_e)
                     
                     elif node_class in (ua.NodeClass.Object, ua.NodeClass.ObjectType):
-                        # 폴더(Object)인 경우 재귀 호출
-                        sub_tags = await self._browse_tags(child, current_path)
+                        sub_tags = await self._browse_tags(child, current_path, ns_idx=ns_idx)
                         tags.extend(sub_tags)
                         
                 except Exception as e:

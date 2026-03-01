@@ -70,10 +70,16 @@ async def sync_tags_from_opc(provider: str = "[default]"):
     try:
         tags = await opc_client.get_all_tags(provider=provider)
         if not tags:
-            raise HTTPException(
-                status_code=404,
-                detail=f"태그를 찾을 수 없습니다. Provider: {provider}",
-            )
+            return {
+                "status": "warning",
+                "indexed": 0,
+                "total": get_tag_count(),
+                "message": (
+                    f"OPC UA에서 태그를 찾을 수 없습니다. Provider: {provider}. "
+                    "Ignition Gateway에서 해당 Tag Provider의 OPC UA 노출이 활성화되어 있는지 확인하세요. "
+                    "(Config → Tags → Tag Providers → [default] → OPC UA Expose)"
+                ),
+            }
             
         indexed_count = ingest_tags(tags)
         
@@ -153,3 +159,4 @@ async def clear_tag_store():
         return {"status": "ok", "message": "태그 스토어 초기화 완료"}
     else:
         raise HTTPException(status_code=404, detail="태그 스토어가 초기화되지 않았거나 이미 비어있습니다.")
+

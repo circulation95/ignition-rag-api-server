@@ -91,11 +91,11 @@ def search_alarm_events(
         알람 이벤트 목록
     """
     # 시간 범위 계산
-    now_ms = int(datetime.now().timestamp() * 1000)
-    start_ms = now_ms - (hours_ago * 3600 * 1000)
+    start_dt = datetime.now() - timedelta(hours=hours_ago)
+    start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     # WHERE 조건 구성
-    conditions = [f"eventtime >= {start_ms}"]
+    conditions = [f"eventtime >= '{start_str}'"]
 
     if tag_path:
         conditions.append(f"source LIKE '%{tag_path}%'")
@@ -142,8 +142,8 @@ def get_alarm_statistics(tag_path: Optional[str] = None, days: int = 7) -> str:
     Returns:
         알람 통계 정보
     """
-    now_ms = int(datetime.now().timestamp() * 1000)
-    start_ms = now_ms - (days * 24 * 3600 * 1000)
+    start_dt = datetime.now() - timedelta(days=days)
+    start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     tag_filter = f"AND source LIKE '%{tag_path}%'" if tag_path else ""
 
@@ -156,7 +156,7 @@ def get_alarm_statistics(tag_path: Optional[str] = None, days: int = 7) -> str:
         MIN(eventtime) as first_alarm,
         MAX(eventtime) as last_alarm
     FROM alarm_events
-    WHERE eventtime >= {start_ms} {tag_filter}
+    WHERE eventtime >= '{start_str}' {tag_filter}
     GROUP BY source
     ORDER BY alarm_count DESC
     LIMIT 20
@@ -209,8 +209,8 @@ def get_alarm_count_by_period(
     else:
         end_dt = today
 
-    start_ms = int(start_dt.timestamp() * 1000)
-    end_ms = int(end_dt.timestamp() * 1000)
+    start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+    end_str = end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     tag_filter = f"AND source LIKE '%{tag_path}%'" if tag_path else ""
 
@@ -221,7 +221,7 @@ def get_alarm_count_by_period(
         SUM(CASE WHEN eventtype = 1 THEN 1 ELSE 0 END) as clear_count,
         SUM(CASE WHEN eventtype = 2 THEN 1 ELSE 0 END) as ack_count
     FROM alarm_events
-    WHERE eventtime >= {start_ms} AND eventtime <= {end_ms} {tag_filter}
+    WHERE eventtime >= '{start_str}' AND eventtime <= '{end_str}' {tag_filter}
     """
 
     try:

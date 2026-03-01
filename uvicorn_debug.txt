@@ -1,0 +1,183 @@
+﻿uvicorn : Traceback (most re
+cent call last):
+위치 줄:1 문자:1
++ uvicorn app.main:app --hos
+t 0.0.0.0 --port 8001 --log-
+level debug 2>& ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (Trace  
+  back (most recent call    
+ last)::String) [], Remo    
+teException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+  File "<frozen runpy>", lin
+e 198, in _run_module_as_mai
+n
+  File "<frozen runpy>", lin
+e 88, in _run_code
+  File "C:\Users\wangsoon\an
+aconda3\Scripts\uvicorn.exe\
+__main__.py", line 7, in <mo
+dule>
+  File "C:\Users\wangsoon\Ap
+pData\Roaming\Python\Python3
+12\site-packages\click\core.
+py", line 1485, in __call__
+    return self.main(*args, 
+**kwargs)
+           ^^^^^^^^^^^^^^^^^
+^^^^^^^^^
+  File "C:\Users\wangsoon\Ap
+pData\Roaming\Python\Python3
+12\site-packages\click\core.
+py", line 1406, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\Ap
+pData\Roaming\Python\Python3
+12\site-packages\click\core.
+py", line 1269, in invoke
+    return ctx.invoke(self.c
+allback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\Ap
+pData\Roaming\Python\Python3
+12\site-packages\click\core.
+py", line 824, in invoke
+    return callback(*args, *
+*kwargs)
+           ^^^^^^^^^^^^^^^^^
+^^^^^^^^
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\main.py", line 410, in
+ main
+    run(
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\main.py", line 577, in
+ run
+    server.run()
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\server.py", line 65, i
+n run
+    return asyncio.run(self.
+serve(sockets=sockets))
+           ^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\an
+aconda3\Lib\asyncio\runners.
+py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\an
+aconda3\Lib\asyncio\runners.
+py", line 118, in run
+    return self._loop.run_un
+til_complete(task)
+           ^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\an
+aconda3\Lib\asyncio\base_eve
+nts.py", line 687, in run_un
+til_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\server.py", line 69, i
+n serve
+    await self._serve(socket
+s)
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\server.py", line 76, i
+n _serve
+    config.load()
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\config.py", line 434, 
+in load
+    self.loaded_app = import
+_from_string(self.app)
+                      ^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\importer.py", line 22,
+ in import_from_string
+    raise exc from None
+  File "C:\Users\wangsoon\an
+aconda3\Lib\site-packages\uv
+icorn\importer.py", line 19,
+ in import_from_string
+    module = importlib.impor
+t_module(module_str)
+             ^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wangsoon\an
+aconda3\Lib\importlib\__init
+__.py", line 90, in import_m
+odule
+    return _bootstrap._gcd_i
+mport(name[level:], package,
+ level)
+           ^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^
+  File "<frozen importlib._b
+ootstrap>", line 1387, in _g
+cd_import
+  File "<frozen importlib._b
+ootstrap>", line 1360, in _f
+ind_and_load
+  File "<frozen importlib._b
+ootstrap>", line 1331, in _f
+ind_and_load_unlocked
+  File "<frozen importlib._b
+ootstrap>", line 935, in _lo
+ad_unlocked
+  File "<frozen importlib._b
+ootstrap_external>", line 99
+5, in exec_module
+  File "<frozen importlib._b
+ootstrap>", line 488, in _ca
+ll_with_frames_removed
+  File "C:\ignition\ignition
+-rag-api-server\app\main.py"
+, line 8, in <module>
+    from app.api.v1.router i
+mport api_router
+  File "C:\ignition\ignition
+-rag-api-server\app\api\v1\r
+outer.py", line 3, in <modul
+e>
+    from app.api.v1.approve 
+import router as approve_rou
+ter
+  File "C:\ignition\ignition
+-rag-api-server\app\api\v1\a
+pprove.py", line 13, in <mod
+ule>
+    from app.services.approv
+al_storage import (
+  File "C:\ignition\ignition
+-rag-api-server\app\services
+\approval_storage.py", line 
+9, in <module>
+    from app.graph.state imp
+ort PendingAction
+  File "C:\ignition\ignition
+-rag-api-server\app\graph\st
+ate.py", line 7, in <module>
+    from langgraph.graph.mes
+sage import add_messages
+ModuleNotFoundError: No modu
+le named 'langgraph'
